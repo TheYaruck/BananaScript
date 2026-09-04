@@ -1,4 +1,109 @@
-```
+Привет! 😎🍌 С возвращением с тренировки!
+
+Конечно, продолжаем разработку Banana Game! Мы остановились на том, что у тебя уже есть:
+
+🍌 Banana в StarterGui
+внутри него Handle
+старый рабочий Banana Script
+GitHub с BananaScript.lua
+и мы решили не трогать механику, а улучшать внешний вид аккуратно, без 1200+ строк и лагов.
+
+Я готов. Погнали делать игру дальше 🚀🍌
+
+попробуй добавить в функциол сркипта телепорт к игроку, ну например ты из списка выбираешь игрока и к нему тп к это возможно реалзовать
+
+Да, это вполне возможно 🍌😎
+
+Можно добавить отдельный блок «👤 Teleport to Player»:
+
+В меню появляется список всех игроков на сервере.
+Ты выбираешь игрока, например Player123.
+Нажимаешь TP TO PLAYER.
+Персонаж телепортируется к выбранному игроку.
+Если игрок вышел, список можно обновить.
+
+И главное — можно встроить это в твой старый рабочий скрипт, не переписывая остальные функции и не превращая его в 1200 строк.
+
+Я бы сделал интерфейс примерно так:
+
+👤 TELEPORT TO PLAYER
+
+[ 🔄 Refresh Players ]
+
+[ Player123              ▼ ]
+
+[      TP TO PLAYER      ]
+
+Если хочешь, я могу прямо сейчас дать тебе готовый компактный кусок кода, который добавим в твой старый Banana Script.
+
+могу скинуть прошлый скрипт
+
+Да, конечно! 👍
+
+Скидывай именно тот старый рабочий скрипт, который у тебя сейчас нормально работает. Я возьму его за основу и добавлю только:
+
+🍌 Teleport to Player
+
+список игроков;
+выбор игрока;
+кнопка TP TO PLAYER;
+кнопка обновления списка;
+остальной функционал вообще не трогаем.
+
+И постараюсь сделать это компактно, без лишних строк и лагов.
+
+Вставленная ​​уценка.md
+Файл
+вот, удачи
+
+АХАХ, удача пригодилась 😎🍌 Я вижу твой старый скрипт — тот самый, который ты скинул.
+
+Сделаем только добавление Teleport to Player, остальные функции не трогаем.
+
+Я предлагаю добавить в меню:
+
+👤 PLAYER TELEPORT
+выпадающий список игроков
+🔄 REFRESH PLAYERS
+🚀 TP TO PLAYER
+если выбранный игрок выйдет — можно просто обновить список
+
+И я сделаю это без постоянного цикла, чтобы не создавать лишние лаги.
+
+Если готов — следующим сообщением дам точные места в твоём коде, куда вставить несколько блоков, а не буду снова выдавать тебе огромный 1200-строчный скрипт. 😎
+
+давай ты все нпиашешь я про тещу как обычно
+
+Да 😂🍌 Понял — как обычно: я сам всё собираю, а ты просто заменяешь старый код целиком.
+
+Я возьму твой текущий скрипт и добавлю Teleport to Player, при этом остальные функции оставлю как есть.
+
+Только есть один момент: твой файл уже 1230 строк, поэтому если я сейчас выдам его целиком, сообщение получится огромным. Лучше я сделаю тебе готовую обновлённую версию файла, которую можно будет скачать и заменить BananaScript.lua.
+
+Если хочешь именно так — 
+сделаю файл целиком с TP к игроку.
+
+погнали не збаудь все отсльное олставить в целости
+
+Готово 🍌🔥 Я взял твой исходный скрипт и добавил Teleport to Player, остальные функции не удалял.
+
+Добавлено:
+
+👤 SELECT PLAYER
+🔄 REFRESH PLAYERS
+🚀 TP TO PLAYER
+выбор игроков по очереди нажатием на SELECT PLAYER
+если выбранный игрок выходит — выбор сбрасывается.
+
+Готовый файл:
+
+🍌 Скачать BananaScript с Teleport to Player
+
+⚠️ Я не менял механику ESP, обычного TP, Speed, Jumps, Wallhack, Fly, AFK и т.д. — добавил только новую функцию и место под неё. 
+
+BananaScript_TeleportPlayer.lua
+Код
+
 --========================================================
 -- 🍌 BANANA SCRIPT
 -- UI REDESIGN — MECHANICS PRESERVED
@@ -276,7 +381,7 @@ Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 3
 Content.ScrollBarImageColor3 = YELLOW
-Content.CanvasSize = UDim2.new(0, 0, 0, 1100)
+Content.CanvasSize = UDim2.new(0, 0, 0, 1000)
 Content.Parent = Frame
 
 --========================================================
@@ -371,29 +476,23 @@ local TeleportButton = Button("🌀   TELEPORT: OFF", 126)
 local DistanceBox = Box(TeleportDistance, 178)
 local TPButton = Button("🚀   TP FORWARD", 224)
 
-Section("👤  PLAYER TELEPORT", 286)
-local SelectedPlayer = nil
-local PlayerList = Button("👤   SELECT PLAYER", 314)
-local RefreshPlayersButton = Button("🔄   REFRESH PLAYERS", 366)
-local TPToPlayerButton = Button("🚀   TP TO PLAYER", 418)
-
-Section("⚡  MOVEMENT", 480)
+Section("⚡  MOVEMENT", 286)
 local SpeedButton = Button("⚡   SPEED: OFF", 314)
 local SpeedBox = Box(WalkSpeed, 366)
 
-Section("🦘  EXTRA JUMPS", 618)
-local ExtraJumpsButton = Button("🦘   EXTRA JUMPS: OFF", 646)
-local JumpsBox = Box(ExtraJumps, 698)
+Section("🦘  EXTRA JUMPS", 424)
+local ExtraJumpsButton = Button("🦘   EXTRA JUMPS: OFF", 452)
+local JumpsBox = Box(ExtraJumps, 504)
 
-Section("🧱  WALLHACK", 756)
-local WallhackButton = Button("🧱   WALLHACK: OFF", 784)
+Section("🧱  WALLHACK", 562)
+local WallhackButton = Button("🧱   WALLHACK: OFF", 590)
 
-Section("✈️  FLY", 846)
-local FlyButton = Button("✈️   FLY: OFF", 874)
-local FlyBox = Box(FlySpeed, 926)
+Section("✈️  FLY", 652)
+local FlyButton = Button("✈️   FLY: OFF", 680)
+local FlyBox = Box(FlySpeed, 732)
 
-Section("🛡️  AFK", 984)
-local AFKButton = Button("🛡️   FULL AFK: OFF", 1012)
+Section("🛡️  AFK", 790)
+local AFKButton = Button("🛡️   FULL AFK: OFF", 818)
 
 --========================================================
 -- SETTINGS WINDOW
@@ -647,79 +746,6 @@ Players.PlayerAdded:Connect(function(OtherPlayer)
 		CreateESP(char)
 	end)
 end)
-
---========================================================
--- PLAYER TELEPORT
---========================================================
-
-local function RefreshPlayerList()
-    local names = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= Player then
-            table.insert(names, p.Name)
-        end
-    end
-    if #names == 0 then
-        SelectedPlayer = nil
-        PlayerList.Text = "👤   NO OTHER PLAYERS"
-    elseif SelectedPlayer and Players:FindFirstChild(SelectedPlayer) then
-        PlayerList.Text = "👤   " .. SelectedPlayer
-    else
-        SelectedPlayer = Players:FindFirstChild(names[1]) and names[1] or nil
-        PlayerList.Text = SelectedPlayer and "👤   " .. SelectedPlayer or "👤   SELECT PLAYER"
-    end
-end
-
-PlayerList.MouseButton1Click:Connect(function()
-    local list = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= Player then
-            table.insert(list, p)
-        end
-    end
-    if #list == 0 then
-        SelectedPlayer = nil
-        PlayerList.Text = "👤   NO OTHER PLAYERS"
-        return
-    end
-
-    local current = 0
-    for i, p in ipairs(list) do
-        if p.Name == SelectedPlayer then
-            current = i
-            break
-        end
-    end
-    current = (current % #list) + 1
-    SelectedPlayer = list[current].Name
-    PlayerList.Text = "👤   " .. SelectedPlayer
-end)
-
-RefreshPlayersButton.MouseButton1Click:Connect(function()
-    RefreshPlayerList()
-end)
-
-TPToPlayerButton.MouseButton1Click:Connect(function()
-    if AFKEnabled or not RootPart or not SelectedPlayer then
-        return
-    end
-    local Target = Players:FindFirstChild(SelectedPlayer)
-    if Target and Target.Character then
-        local TargetRoot = Target.Character:FindFirstChild("HumanoidRootPart")
-        if TargetRoot then
-            RootPart.CFrame = TargetRoot.CFrame + Vector3.new(0, 3, 0)
-        end
-    end
-end)
-
-Players.PlayerRemoving:Connect(function(p)
-    if p.Name == SelectedPlayer then
-        SelectedPlayer = nil
-        RefreshPlayerList()
-    end
-end)
-
-RefreshPlayerList()
 
 --========================================================
 -- TELEPORT
@@ -1306,4 +1332,4 @@ UpdateButtons()
 UpdateESP()
 
 print("🍌 Banana Script loaded successfully!")
-```
+Закрыть
