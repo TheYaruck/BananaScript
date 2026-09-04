@@ -1,3 +1,4 @@
+```
 --========================================================
 -- 🍌 BANANA SCRIPT
 -- UI REDESIGN — MECHANICS PRESERVED
@@ -275,7 +276,7 @@ Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 3
 Content.ScrollBarImageColor3 = YELLOW
-Content.CanvasSize = UDim2.new(0, 0, 0, 1000)
+Content.CanvasSize = UDim2.new(0, 0, 0, 1100)
 Content.Parent = Frame
 
 --========================================================
@@ -370,23 +371,29 @@ local TeleportButton = Button("🌀   TELEPORT: OFF", 126)
 local DistanceBox = Box(TeleportDistance, 178)
 local TPButton = Button("🚀   TP FORWARD", 224)
 
-Section("⚡  MOVEMENT", 286)
+Section("👤  PLAYER TELEPORT", 286)
+local SelectedPlayer = nil
+local PlayerList = Button("👤   SELECT PLAYER", 314)
+local RefreshPlayersButton = Button("🔄   REFRESH PLAYERS", 366)
+local TPToPlayerButton = Button("🚀   TP TO PLAYER", 418)
+
+Section("⚡  MOVEMENT", 480)
 local SpeedButton = Button("⚡   SPEED: OFF", 314)
 local SpeedBox = Box(WalkSpeed, 366)
 
-Section("🦘  EXTRA JUMPS", 424)
-local ExtraJumpsButton = Button("🦘   EXTRA JUMPS: OFF", 452)
-local JumpsBox = Box(ExtraJumps, 504)
+Section("🦘  EXTRA JUMPS", 618)
+local ExtraJumpsButton = Button("🦘   EXTRA JUMPS: OFF", 646)
+local JumpsBox = Box(ExtraJumps, 698)
 
-Section("🧱  WALLHACK", 562)
-local WallhackButton = Button("🧱   WALLHACK: OFF", 590)
+Section("🧱  WALLHACK", 756)
+local WallhackButton = Button("🧱   WALLHACK: OFF", 784)
 
-Section("✈️  FLY", 652)
-local FlyButton = Button("✈️   FLY: OFF", 680)
-local FlyBox = Box(FlySpeed, 732)
+Section("✈️  FLY", 846)
+local FlyButton = Button("✈️   FLY: OFF", 874)
+local FlyBox = Box(FlySpeed, 926)
 
-Section("🛡️  AFK", 790)
-local AFKButton = Button("🛡️   FULL AFK: OFF", 818)
+Section("🛡️  AFK", 984)
+local AFKButton = Button("🛡️   FULL AFK: OFF", 1012)
 
 --========================================================
 -- SETTINGS WINDOW
@@ -640,6 +647,79 @@ Players.PlayerAdded:Connect(function(OtherPlayer)
 		CreateESP(char)
 	end)
 end)
+
+--========================================================
+-- PLAYER TELEPORT
+--========================================================
+
+local function RefreshPlayerList()
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Player then
+            table.insert(names, p.Name)
+        end
+    end
+    if #names == 0 then
+        SelectedPlayer = nil
+        PlayerList.Text = "👤   NO OTHER PLAYERS"
+    elseif SelectedPlayer and Players:FindFirstChild(SelectedPlayer) then
+        PlayerList.Text = "👤   " .. SelectedPlayer
+    else
+        SelectedPlayer = Players:FindFirstChild(names[1]) and names[1] or nil
+        PlayerList.Text = SelectedPlayer and "👤   " .. SelectedPlayer or "👤   SELECT PLAYER"
+    end
+end
+
+PlayerList.MouseButton1Click:Connect(function()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Player then
+            table.insert(list, p)
+        end
+    end
+    if #list == 0 then
+        SelectedPlayer = nil
+        PlayerList.Text = "👤   NO OTHER PLAYERS"
+        return
+    end
+
+    local current = 0
+    for i, p in ipairs(list) do
+        if p.Name == SelectedPlayer then
+            current = i
+            break
+        end
+    end
+    current = (current % #list) + 1
+    SelectedPlayer = list[current].Name
+    PlayerList.Text = "👤   " .. SelectedPlayer
+end)
+
+RefreshPlayersButton.MouseButton1Click:Connect(function()
+    RefreshPlayerList()
+end)
+
+TPToPlayerButton.MouseButton1Click:Connect(function()
+    if AFKEnabled or not RootPart or not SelectedPlayer then
+        return
+    end
+    local Target = Players:FindFirstChild(SelectedPlayer)
+    if Target and Target.Character then
+        local TargetRoot = Target.Character:FindFirstChild("HumanoidRootPart")
+        if TargetRoot then
+            RootPart.CFrame = TargetRoot.CFrame + Vector3.new(0, 3, 0)
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if p.Name == SelectedPlayer then
+        SelectedPlayer = nil
+        RefreshPlayerList()
+    end
+end)
+
+RefreshPlayerList()
 
 --========================================================
 -- TELEPORT
@@ -1226,3 +1306,4 @@ UpdateButtons()
 UpdateESP()
 
 print("🍌 Banana Script loaded successfully!")
+```
