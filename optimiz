@@ -1,0 +1,898 @@
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+print("ОПТИМИЗАТОР ЗАПУЩЕН")
+
+--==================================================
+-- СОСТОЯНИЯ
+--==================================================
+
+local saved = {}
+local currentMode = "NONE"
+
+local animationsOptimized = false
+local animationConnections = {}
+local animationObjectConnections = {}
+
+--==================================================
+-- СОХРАНЕНИЕ
+--==================================================
+
+local function saveProperty(object, property)
+
+	if not object or not object.Parent then
+		return
+	end
+
+	saved[object] = saved[object] or {}
+
+	if saved[object][property] == nil then
+
+		local ok, value = pcall(function()
+			return object[property]
+		end)
+
+		if ok then
+			saved[object][property] = value
+		end
+	end
+end
+
+local function restoreAll()
+
+	for object, properties in pairs(saved) do
+
+		if object and object.Parent then
+
+			for property, value in pairs(properties) do
+
+				pcall(function()
+					object[property] = value
+				end)
+
+			end
+		end
+	end
+
+	saved = {}
+	currentMode = "NONE"
+end
+
+--==================================================
+-- GUI
+--==================================================
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "RenderOptimizer"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 390, 0, 515)
+main.Position = UDim2.new(0.5, -195, 0.5, -257)
+main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 20)
+mainCorner.Parent = main
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Thickness = 2
+mainStroke.Color = Color3.fromRGB(60, 60, 72)
+mainStroke.Parent = main
+
+--==================================================
+-- ЗАГОЛОВОК
+--==================================================
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -30, 0, 40)
+title.Position = UDim2.new(0, 15, 0, 12)
+title.BackgroundTransparency = 1
+title.Text = "⚡ ОПТИМИЗАТОР RENDER"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 23
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -30, 0, 24)
+status.Position = UDim2.new(0, 15, 0, 50)
+status.BackgroundTransparency = 1
+status.Text = "● Оптимизация выключена"
+status.TextColor3 = Color3.fromRGB(150, 150, 160)
+status.TextSize = 13
+status.Font = Enum.Font.GothamMedium
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Parent = main
+
+--==================================================
+-- КНОПКИ РЕЖИМОВ
+--==================================================
+
+local function createButton(name, y, textColor, description)
+
+	local button = Instance.new("TextButton")
+
+	button.Name = name
+	button.Size = UDim2.new(1, -30, 0, 55)
+	button.Position = UDim2.new(0, 15, 0, y)
+
+	button.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = false
+	button.Text = ""
+	button.Parent = main
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 13)
+	corner.Parent = button
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1
+	stroke.Color = Color3.fromRGB(54, 54, 66)
+	stroke.Parent = button
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0, 120, 1, 0)
+	label.Position = UDim2.new(0, 15, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.TextColor3 = textColor
+	label.TextSize = 17
+	label.Font = Enum.Font.GothamBold
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = button
+
+	local desc = Instance.new("TextLabel")
+	desc.Size = UDim2.new(1, -145, 1, 0)
+	desc.Position = UDim2.new(0, 130, 0, 0)
+	desc.BackgroundTransparency = 1
+	desc.Text = description
+	desc.TextColor3 = Color3.fromRGB(155, 155, 165)
+	desc.TextSize = 11
+	desc.Font = Enum.Font.Gotham
+	desc.TextXAlignment = Enum.TextXAlignment.Right
+	desc.Parent = button
+
+	return button
+end
+
+local lowButton = createButton(
+	"LOW",
+	90,
+	Color3.fromRGB(110, 220, 130),
+	"Лёгкая"
+)
+
+local highButton = createButton(
+	"HIGH",
+	151,
+	Color3.fromRGB(255, 210, 80),
+	"Сильная"
+)
+
+local ultraButton = createButton(
+	"ULTRA",
+	212,
+	Color3.fromRGB(255, 125, 75),
+	"Очень сильная"
+)
+
+local extremeButton = createButton(
+	"EXTREME",
+	273,
+	Color3.fromRGB(255, 65, 65),
+	"Максимальная"
+)
+
+--==================================================
+-- АНИМАЦИИ
+--==================================================
+
+local animationButton = Instance.new("TextButton")
+
+animationButton.Size = UDim2.new(1, -30, 0, 50)
+animationButton.Position = UDim2.new(0, 15, 0, 340)
+
+animationButton.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+animationButton.BorderSizePixel = 0
+animationButton.Text = "🎞️ АНИМАЦИИ: ВЫКЛ"
+animationButton.TextColor3 = Color3.fromRGB(235, 235, 240)
+animationButton.TextSize = 14
+animationButton.Font = Enum.Font.GothamBold
+animationButton.AutoButtonColor = false
+animationButton.Parent = main
+
+local animationCorner = Instance.new("UICorner")
+animationCorner.CornerRadius = UDim.new(0, 13)
+animationCorner.Parent = animationButton
+
+--==================================================
+-- RESTORE
+--==================================================
+
+local restoreButton = Instance.new("TextButton")
+
+restoreButton.Size = UDim2.new(1, -30, 0, 50)
+restoreButton.Position = UDim2.new(0, 15, 0, 402)
+
+restoreButton.BackgroundColor3 = Color3.fromRGB(55, 34, 42)
+restoreButton.BorderSizePixel = 0
+restoreButton.Text = "↩ ВОССТАНОВИТЬ"
+restoreButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+restoreButton.TextSize = 14
+restoreButton.Font = Enum.Font.GothamBold
+restoreButton.AutoButtonColor = false
+restoreButton.Parent = main
+
+local restoreCorner = Instance.new("UICorner")
+restoreCorner.CornerRadius = UDim.new(0, 13)
+restoreCorner.Parent = restoreButton
+
+--==================================================
+-- ОПТИМИЗАЦИЯ LOW
+--==================================================
+
+local function baseOptimization()
+
+	saveProperty(Lighting, "GlobalShadows")
+	Lighting.GlobalShadows = false
+
+	for _, object in ipairs(Lighting:GetDescendants()) do
+
+		if object:IsA("PostEffect") then
+
+			saveProperty(object, "Enabled")
+			object.Enabled = false
+
+		end
+	end
+
+	for _, object in ipairs(workspace:GetDescendants()) do
+
+		if object:IsA("ParticleEmitter")
+			or object:IsA("Trail")
+			or object:IsA("Beam")
+			or object:IsA("Smoke")
+			or object:IsA("Fire")
+			or object:IsA("Sparkles") then
+
+			saveProperty(object, "Enabled")
+			object.Enabled = false
+		end
+
+		if object:IsA("PointLight")
+			or object:IsA("SpotLight")
+			or object:IsA("SurfaceLight") then
+
+			saveProperty(object, "Enabled")
+			object.Enabled = false
+		end
+	end
+end
+
+--==================================================
+-- ОПТИМИЗАЦИЯ HIGH
+--==================================================
+
+local function highOptimization()
+
+	baseOptimization()
+
+	for _, object in ipairs(workspace:GetDescendants()) do
+
+		if object:IsA("BasePart") then
+
+			saveProperty(object, "Material")
+			object.Material = Enum.Material.SmoothPlastic
+
+			saveProperty(object, "CastShadow")
+			object.CastShadow = false
+
+			saveProperty(object, "Reflectance")
+			object.Reflectance = 0
+		end
+
+		if object:IsA("Decal")
+			or object:IsA("Texture") then
+
+			saveProperty(object, "Transparency")
+			object.Transparency = 1
+		end
+
+		if object:IsA("SurfaceAppearance") then
+
+			saveProperty(object, "Enabled")
+			object.Enabled = false
+		end
+
+		if object:IsA("MeshPart") then
+
+			pcall(function()
+
+				saveProperty(object, "RenderFidelity")
+
+				object.RenderFidelity =
+					Enum.RenderFidelity.Performance
+
+			end)
+		end
+	end
+end
+
+--==================================================
+-- ОПТИМИЗАЦИЯ ULTRA
+--==================================================
+
+local function ultraOptimization()
+
+	highOptimization()
+
+	for _, object in ipairs(workspace:GetDescendants()) do
+
+		if object:IsA("BasePart") then
+
+			local size = object.Size
+
+			local smallest =
+				math.min(size.X, size.Y, size.Z)
+
+			if smallest <= 0.2 then
+
+				saveProperty(
+					object,
+					"LocalTransparencyModifier"
+				)
+
+				object.LocalTransparencyModifier = 1
+			end
+		end
+
+		if object:IsA("BillboardGui")
+			or object:IsA("SurfaceGui") then
+
+			saveProperty(object, "Enabled")
+			object.Enabled = false
+		end
+	end
+end
+
+--==================================================
+-- ОПТИМИЗАЦИЯ EXTREME
+--==================================================
+
+local function extremeOptimization()
+
+	ultraOptimization()
+
+	for _, object in ipairs(workspace:GetDescendants()) do
+
+		if object:IsA("BasePart") then
+
+			local size = object.Size
+
+			local smallest =
+				math.min(
+					size.X,
+					size.Y,
+					size.Z
+				)
+
+			local volume =
+				size.X *
+				size.Y *
+				size.Z
+
+			if smallest <= 0.35
+				or volume <= 0.06 then
+
+				saveProperty(
+					object,
+					"LocalTransparencyModifier"
+				)
+
+				object.LocalTransparencyModifier = 1
+			end
+		end
+
+		if object:IsA("MeshPart") then
+
+			pcall(function()
+
+				saveProperty(
+					object,
+					"RenderFidelity"
+				)
+
+				object.RenderFidelity =
+					Enum.RenderFidelity.Performance
+
+			end)
+		end
+	end
+end
+
+--==================================================
+-- РЕЖИМЫ
+--==================================================
+
+local function setMode(mode)
+
+	restoreAll()
+
+	if mode == "LOW" then
+
+		baseOptimization()
+
+	elseif mode == "HIGH" then
+
+		highOptimization()
+
+	elseif mode == "ULTRA" then
+
+		ultraOptimization()
+
+	elseif mode == "EXTREME" then
+
+		extremeOptimization()
+	end
+
+	currentMode = mode
+
+	status.Text =
+		"● Активен режим: " .. mode
+
+	status.TextColor3 =
+		Color3.fromRGB(150, 150, 160)
+
+	lowButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	highButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	ultraButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	extremeButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	if mode == "LOW" then
+
+		lowButton.BackgroundColor3 =
+			Color3.fromRGB(45,80,55)
+
+	elseif mode == "HIGH" then
+
+		highButton.BackgroundColor3 =
+			Color3.fromRGB(80,70,40)
+
+	elseif mode == "ULTRA" then
+
+		ultraButton.BackgroundColor3 =
+			Color3.fromRGB(90,55,42)
+
+	elseif mode == "EXTREME" then
+
+		extremeButton.BackgroundColor3 =
+			Color3.fromRGB(100,42,42)
+	end
+end
+
+lowButton.MouseButton1Click:Connect(function()
+	setMode("LOW")
+end)
+
+highButton.MouseButton1Click:Connect(function()
+	setMode("HIGH")
+end)
+
+ultraButton.MouseButton1Click:Connect(function()
+	setMode("ULTRA")
+end)
+
+extremeButton.MouseButton1Click:Connect(function()
+	setMode("EXTREME")
+end)
+
+--==================================================
+-- АНИМАЦИИ
+--==================================================
+
+local function stopAnimator(animator)
+
+	if not animator then
+		return
+	end
+
+	-- Останавливаем уже играющие AnimationTrack
+	for _, track in ipairs(
+		animator:GetPlayingAnimationTracks()
+	) do
+
+		pcall(function()
+			track:Stop(0)
+		end)
+
+	end
+
+	-- Перехватываем новые AnimationTrack
+	local connection
+
+	connection = animator.AnimationPlayed:Connect(function(track)
+
+		if animationsOptimized then
+
+			pcall(function()
+				track:Stop(0)
+			end)
+
+		end
+	end)
+
+	table.insert(
+		animationConnections,
+		connection
+	)
+end
+
+local function processAnimationObject(object)
+
+	if object:IsA("Animator") then
+
+		stopAnimator(object)
+
+		return
+	end
+
+	if object:IsA("Humanoid") then
+
+		local animator =
+			object:FindFirstChildOfClass("Animator")
+
+		if animator then
+			stopAnimator(animator)
+		end
+
+		return
+	end
+
+	if object:IsA("AnimationController") then
+
+		local animator =
+			object:FindFirstChildOfClass("Animator")
+
+		if animator then
+			stopAnimator(animator)
+		end
+	end
+end
+
+--==================================================
+-- НОВЫЕ ОБЪЕКТЫ
+--==================================================
+
+local function watchNewObject(object)
+
+	if not animationsOptimized then
+		return
+	end
+
+	if object:IsA("Humanoid")
+		or object:IsA("AnimationController")
+		or object:IsA("Animator") then
+
+		task.defer(function()
+
+			if animationsOptimized
+				and object
+				and object.Parent then
+
+				processAnimationObject(object)
+
+			end
+		end)
+	end
+end
+
+local function startAnimationWatcher()
+
+	-- Следим за появлением новых объектов
+	local connection =
+		workspace.DescendantAdded:Connect(
+			watchNewObject
+		)
+
+	table.insert(
+		animationObjectConnections,
+		connection
+	)
+
+	-- Следим за персонажами игроков
+	local playerConnection =
+		Players.PlayerAdded:Connect(function(otherPlayer)
+
+			local characterConnection
+
+			characterConnection =
+				otherPlayer.CharacterAdded:Connect(
+					function(character)
+
+						if not animationsOptimized then
+							return
+						end
+
+						task.wait(0.1)
+
+						for _, object in ipairs(
+							character:GetDescendants()
+						) do
+
+							if object:IsA("Humanoid")
+								or object:IsA("AnimationController")
+								or object:IsA("Animator") then
+
+								processAnimationObject(object)
+							end
+						end
+					end
+				)
+
+			table.insert(
+				animationObjectConnections,
+				characterConnection
+			)
+		end)
+
+	table.insert(
+		animationObjectConnections,
+		playerConnection
+	)
+
+	-- Уже существующие игроки
+	for _, otherPlayer in ipairs(
+		Players:GetPlayers()
+	) do
+
+		local characterConnection
+
+		characterConnection =
+			otherPlayer.CharacterAdded:Connect(
+				function(character)
+
+					if not animationsOptimized then
+						return
+					end
+
+					task.wait(0.1)
+
+					for _, object in ipairs(
+						character:GetDescendants()
+					) do
+
+						if object:IsA("Humanoid")
+							or object:IsA("AnimationController")
+							or object:IsA("Animator") then
+
+							processAnimationObject(object)
+						end
+					end
+				end
+			)
+
+		table.insert(
+			animationObjectConnections,
+			characterConnection
+		)
+	end
+end
+
+--==================================================
+-- ВКЛЮЧЕНИЕ АНИМАЦИЙ
+--==================================================
+
+local function optimizeAnimations()
+
+	if animationsOptimized then
+		return
+	end
+
+	animationsOptimized = true
+
+	print("ОПТИМИЗАЦИЯ АНИМАЦИЙ: ВКЛ")
+
+	-- Проверяем весь Workspace
+	for _, object in ipairs(
+		workspace:GetDescendants()
+	) do
+
+		if object:IsA("Humanoid")
+			or object:IsA("AnimationController")
+			or object:IsA("Animator") then
+
+			processAnimationObject(object)
+		end
+	end
+
+	-- Проверяем персонажей игроков
+	for _, otherPlayer in ipairs(
+		Players:GetPlayers()
+	) do
+
+		if otherPlayer.Character then
+
+			for _, object in ipairs(
+				otherPlayer.Character:GetDescendants()
+			) do
+
+				if object:IsA("Humanoid")
+					or object:IsA("AnimationController")
+					or object:IsA("Animator") then
+
+					processAnimationObject(object)
+				end
+			end
+		end
+	end
+
+	-- Начинаем отслеживать новые объекты
+	startAnimationWatcher()
+
+	animationButton.Text =
+		"🎞️ АНИМАЦИИ: ВКЛ"
+
+	animationButton.BackgroundColor3 =
+		Color3.fromRGB(55,85,55)
+end
+
+--==================================================
+-- ВЫКЛЮЧЕНИЕ АНИМАЦИЙ
+--==================================================
+
+local function restoreAnimations()
+
+	animationsOptimized = false
+
+	-- Отключаем все соединения AnimationPlayed
+	for _, connection in ipairs(
+		animationConnections
+	) do
+
+		pcall(function()
+			connection:Disconnect()
+		end)
+	end
+
+	animationConnections = {}
+
+	-- Отключаем наблюдение за новыми объектами
+	for _, connection in ipairs(
+		animationObjectConnections
+	) do
+
+		pcall(function()
+			connection:Disconnect()
+		end)
+	end
+
+	animationObjectConnections = {}
+
+	animationButton.Text =
+		"🎞️ АНИМАЦИИ: ВЫКЛ"
+
+	animationButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	print("ОПТИМИЗАЦИЯ АНИМАЦИЙ: ВЫКЛ")
+end
+
+animationButton.MouseButton1Click:Connect(function()
+
+	if animationsOptimized then
+
+		restoreAnimations()
+
+	else
+
+		optimizeAnimations()
+
+	end
+end)
+
+--==================================================
+-- ВОССТАНОВИТЬ ВСЁ
+--==================================================
+
+restoreButton.MouseButton1Click:Connect(function()
+
+	restoreAnimations()
+
+	restoreAll()
+
+	status.Text =
+		"● Оптимизация выключена"
+
+	status.TextColor3 =
+		Color3.fromRGB(150,150,160)
+
+	lowButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	highButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	ultraButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	extremeButton.BackgroundColor3 =
+		Color3.fromRGB(30,30,38)
+
+	print("ВСЕ НАСТРОЙКИ ВОССТАНОВЛЕНЫ")
+end)
+
+--==================================================
+-- ПЕРЕТАСКИВАНИЕ
+--==================================================
+
+local dragging = false
+local dragStart
+local startPosition
+
+main.InputBegan:Connect(function(input)
+
+	if input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
+
+		dragging = true
+
+		dragStart =
+			input.Position
+
+		startPosition =
+			main.Position
+
+		input.Changed:Connect(function()
+
+			if input.UserInputState ==
+				Enum.UserInputState.End then
+
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+	if not dragging then
+		return
+	end
+
+	if input.UserInputType ==
+		Enum.UserInputType.MouseMovement then
+
+		local delta =
+			input.Position - dragStart
+
+		main.Position = UDim2.new(
+
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+	end
+end)
+
+print("ОПТИМИЗАТОР ГОТОВ")
