@@ -1,0 +1,316 @@
+-- [[ BL AUTO BUY ]]
+-- By: Nuko175 (Modificado)
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local screenGui = Instance.new("ScreenGui", player.PlayerGui)
+screenGui.Name = "BLAutoBuy"
+screenGui.ResetOnSpawn = false
+
+-- Border Frame (borde BLANCO)
+local borderFrame = Instance.new("Frame")
+borderFrame.Size = UDim2.new(0, 206, 0, 285)
+borderFrame.Position = UDim2.new(0.5, -103, 0.5, -142)
+borderFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+borderFrame.BorderSizePixel = 0
+borderFrame.Active = true
+borderFrame.Parent = screenGui
+
+local borderCorner = Instance.new("UICorner")
+borderCorner.CornerRadius = UDim.new(0, 17)
+borderCorner.Parent = borderFrame
+
+-- Main Frame (fondo NEGRO)
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 200, 0, 279)
+mainFrame.Position = UDim2.new(0.5, -100, 0.5, -139)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Parent = borderFrame
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 15)
+corner.Parent = mainFrame
+
+-- Title con efecto de onda
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 45)
+title.Text = "BL AUTO BUY"
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 16
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextStrokeColor3 = Color3.fromRGB(100, 100, 100)
+title.TextStrokeTransparency = 0
+title.Parent = mainFrame
+
+-- Link de Discord
+local discordLabel = Instance.new("TextLabel")
+discordLabel.Size = UDim2.new(1, 0, 0, 20)
+discordLabel.Position = UDim2.new(0, 0, 0, 45)
+discordLabel.Text = "discord.gg/vNSbEbjvA"
+discordLabel.Font = Enum.Font.GothamMedium
+discordLabel.TextSize = 11
+discordLabel.BackgroundTransparency = 1
+discordLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+discordLabel.TextXAlignment = Enum.TextXAlignment.Center
+discordLabel.Parent = mainFrame
+
+local function createButton(name, pos, color, textColor)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0, 160, 0, 35)
+	btn.Position = pos
+	btn.BackgroundColor3 = color or Color3.fromRGB(40, 40, 40)
+	btn.Text = name
+	btn.TextColor3 = textColor or Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 13
+	btn.Parent = mainFrame
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = btn
+
+	return btn
+end
+
+-- Auto Buy
+local autoBuyBtn = createButton(
+	"Auto Buy: OFF",
+	UDim2.new(0.5, -80, 0, 75),
+	Color3.fromRGB(40, 40, 40)
+)
+
+-- Интервал Auto Buy
+local msLabel = Instance.new("TextLabel")
+msLabel.Size = UDim2.new(0, 160, 0, 18)
+msLabel.Position = UDim2.new(0.5, -80, 0, 116)
+msLabel.BackgroundTransparency = 1
+msLabel.Text = "Auto Buy interval (ms)"
+msLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+msLabel.Font = Enum.Font.GothamMedium
+msLabel.TextSize = 10
+msLabel.TextXAlignment = Enum.TextXAlignment.Center
+msLabel.Parent = mainFrame
+
+local msBox = Instance.new("TextBox")
+msBox.Name = "AutoBuyMS"
+msBox.Size = UDim2.new(0, 160, 0, 32)
+msBox.Position = UDim2.new(0.5, -80, 0, 136)
+msBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+msBox.BorderSizePixel = 0
+msBox.Text = "100"
+msBox.PlaceholderText = "Milliseconds"
+msBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+msBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+msBox.Font = Enum.Font.Gotham
+msBox.TextSize = 12
+msBox.ClearTextOnFocus = false
+msBox.TextXAlignment = Enum.TextXAlignment.Center
+msBox.Parent = mainFrame
+
+local msCorner = Instance.new("UICorner")
+msCorner.CornerRadius = UDim.new(0, 8)
+msCorner.Parent = msBox
+
+-- Anchored
+local anchoredBtn = createButton(
+	"Anchored: OFF",
+	UDim2.new(0.5, -80, 0, 177),
+	Color3.fromRGB(40, 40, 40)
+)
+
+-- Money
+local moneyLabel = Instance.new("TextLabel")
+moneyLabel.Size = UDim2.new(1, 0, 0, 30)
+moneyLabel.Position = UDim2.new(0, 0, 0, 224)
+moneyLabel.Text = "$0"
+moneyLabel.Font = Enum.Font.GothamBold
+moneyLabel.TextSize = 14
+moneyLabel.BackgroundTransparency = 1
+moneyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+moneyLabel.TextXAlignment = Enum.TextXAlignment.Center
+moneyLabel.Parent = mainFrame
+
+-- Dragging
+local dragging = false
+local dragStart
+local startPos
+local dragInput
+
+title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = true
+		dragStart = input.Position
+		startPos = borderFrame.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+
+		borderFrame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+local autoBuyActive = false
+local anchored = false
+
+-- Получение интервала Auto Buy
+local function getAutoBuyDelay()
+	local ms = tonumber(msBox.Text)
+
+	if not ms then
+		ms = 100
+	end
+
+	if ms < 1 then
+		ms = 1
+	end
+
+	return ms / 1000
+end
+
+-- Auto Buy
+autoBuyBtn.MouseButton1Click:Connect(function()
+	autoBuyActive = not autoBuyActive
+
+	autoBuyBtn.Text = autoBuyActive and "Auto Buy: ON" or "Auto Buy: OFF"
+
+	autoBuyBtn.BackgroundColor3 =
+		autoBuyActive
+		and Color3.fromRGB(200, 200, 200)
+		or Color3.fromRGB(40, 40, 40)
+
+	autoBuyBtn.TextColor3 =
+		autoBuyActive
+		and Color3.fromRGB(0, 0, 0)
+		or Color3.fromRGB(255, 255, 255)
+end)
+
+-- Auto Buy Loop
+task.spawn(function()
+	while true do
+		if autoBuyActive then
+
+			for _, prompt in pairs(workspace:GetDescendants()) do
+				if prompt:IsA("ProximityPrompt") then
+					prompt.HoldDuration = 0
+					prompt:InputHoldBegin()
+					prompt:InputHoldEnd()
+				end
+			end
+
+			task.wait(getAutoBuyDelay())
+		else
+			task.wait(0.1)
+		end
+	end
+end)
+
+-- Anchored
+anchoredBtn.MouseButton1Click:Connect(function()
+	anchored = not anchored
+
+	anchoredBtn.Text = anchored and "Anchored: ON" or "Anchored: OFF"
+
+	anchoredBtn.BackgroundColor3 =
+		anchored
+		and Color3.fromRGB(200, 200, 200)
+		or Color3.fromRGB(40, 40, 40)
+
+	anchoredBtn.TextColor3 =
+		anchored
+		and Color3.fromRGB(0, 0, 0)
+		or Color3.fromRGB(255, 255, 255)
+
+	local char = player.Character or player.CharacterAdded:Wait()
+
+	if char then
+		for _, part in pairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Anchored = anchored
+			end
+		end
+	end
+end)
+
+-- Money
+local function updateMoney()
+	local leaderstats = player:FindFirstChild("leaderstats")
+
+	if leaderstats then
+		local cash =
+			leaderstats:FindFirstChild("Cash")
+			or leaderstats:FindFirstChild("Money")
+			or leaderstats:FindFirstChild("Brainrot")
+			or leaderstats:FindFirstChild("Points")
+
+		if cash then
+			local amount = cash.Value
+			moneyLabel.Text = "$" .. amount
+		end
+	end
+end
+
+updateMoney()
+
+task.spawn(function()
+	while true do
+		task.wait(1)
+		updateMoney()
+	end
+end)
+
+-- Анимация заголовка
+task.spawn(function()
+	local time = 0
+
+	while true do
+		task.wait(0.05)
+
+		time = time + 0.05
+
+		local wave = (math.sin(time * 2) + 1) / 2
+		local colorValue = 255 * wave
+
+		title.TextColor3 = Color3.fromRGB(
+			colorValue,
+			colorValue,
+			colorValue
+		)
+	end
+end)
+
+game.StarterGui:SetCore("SendNotification", {
+	Title = "BL AUTO BUY",
+	Text = "Script cargado correctamente",
+	Duration = 3
+})
