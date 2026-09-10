@@ -1226,4 +1226,3 @@ UpdateButtons()
 UpdateESP()
 
 print("🍌 Banana Script loaded successfully!")
-Закрыть
