@@ -1,11 +1,12 @@
 --========================================================
 -- 🍌 BANANA SCRIPT
--- UI EDITION
+-- MODERN UI EDITION
 --========================================================
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -18,6 +19,8 @@ local ESPEnabled = true
 
 local TeleportEnabled = false
 local TeleportDistance = 10
+local TeleportOffset = 3
+local ResetVelocityOnTeleport = true
 
 local SpeedEnabled = false
 local WalkSpeed = 32
@@ -47,6 +50,20 @@ local ChoosingDanceKey = false
 local DanceTrack = nil
 
 local SelectedPlayer = nil
+
+local CurrentTPTab = "FORWARD"
+
+--========================================================
+-- TELEPORT POINTS
+--========================================================
+
+local TeleportPoints = {
+	[1] = nil,
+	[2] = nil,
+	[3] = nil,
+	[4] = nil,
+	[5] = nil
+}
 
 local Character
 local Humanoid
@@ -88,10 +105,13 @@ end
 -- COLORS
 --========================================================
 
-local BG = Color3.fromRGB(13, 14, 18)
-local PANEL = Color3.fromRGB(20, 21, 27)
-local CARD = Color3.fromRGB(27, 29, 37)
-local CARD_HOVER = Color3.fromRGB(34, 36, 46)
+local BG = Color3.fromRGB(10, 11, 15)
+local PANEL = Color3.fromRGB(17, 19, 25)
+local PANEL_2 = Color3.fromRGB(21, 23, 30)
+
+local CARD = Color3.fromRGB(27, 30, 39)
+local CARD_HOVER = Color3.fromRGB(35, 38, 49)
+local CARD_ACTIVE = Color3.fromRGB(54, 46, 20)
 
 local YELLOW = Color3.fromRGB(255, 207, 55)
 local YELLOW_LIGHT = Color3.fromRGB(255, 224, 105)
@@ -102,6 +122,7 @@ local DARK_GRAY = Color3.fromRGB(95, 99, 112)
 
 local GREEN = Color3.fromRGB(70, 205, 105)
 local RED = Color3.fromRGB(220, 75, 75)
+local BLUE = Color3.fromRGB(82, 135, 215)
 
 --========================================================
 -- CLEAN OLD GUI
@@ -127,6 +148,168 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
 
 --========================================================
+-- UI HELPERS
+--========================================================
+
+local function Tween(Object, Properties, Duration)
+	return TweenService:Create(
+		Object,
+		TweenInfo.new(
+			Duration or 0.15,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		Properties
+	)
+end
+
+local function AddCorner(Object, Radius)
+	local Corner = Instance.new("UICorner")
+	Corner.CornerRadius = UDim.new(0, Radius or 12)
+	Corner.Parent = Object
+	return Corner
+end
+
+local function AddStroke(Object, Color, Thickness, Transparency)
+	local Stroke = Instance.new("UIStroke")
+	Stroke.Color = Color
+	Stroke.Thickness = Thickness or 1
+	Stroke.Transparency = Transparency or 0
+	Stroke.Parent = Object
+	return Stroke
+end
+
+local function Button(parent, text, y, height)
+	local B = Instance.new("TextButton")
+	B.Size = UDim2.new(1, -28, 0, height or 46)
+	B.Position = UDim2.new(0, 14, 0, y)
+	B.BackgroundColor3 = CARD
+	B.Text = text
+	B.TextColor3 = WHITE
+	B.TextSize = 13
+	B.Font = Enum.Font.GothamBold
+	B.AutoButtonColor = false
+	B.Parent = parent
+
+	AddCorner(B, 12)
+	AddStroke(B, Color3.fromRGB(48, 51, 62), 1, 0)
+
+	B.MouseEnter:Connect(function()
+		if not B:GetAttribute("Active") then
+			Tween(B, {
+				BackgroundColor3 = CARD_HOVER
+			}, 0.12):Play()
+		end
+	end)
+
+	B.MouseLeave:Connect(function()
+		if not B:GetAttribute("Active") then
+			Tween(B, {
+				BackgroundColor3 = CARD
+			}, 0.12):Play()
+		end
+	end)
+
+	return B
+end
+
+local function Box(parent, value, y, width)
+	local B = Instance.new("TextBox")
+	B.Size = UDim2.new(
+		0,
+		width or (parent.AbsoluteSize.X - 28),
+		0,
+		38
+	)
+	B.Position = UDim2.new(0, 14, 0, y)
+	B.BackgroundColor3 = PANEL
+	B.TextColor3 = WHITE
+	B.PlaceholderColor3 = DARK_GRAY
+	B.Text = tostring(value)
+	B.TextSize = 13
+	B.Font = Enum.Font.GothamBold
+	B.ClearTextOnFocus = false
+	B.Parent = parent
+
+	AddCorner(B, 10)
+	AddStroke(B, Color3.fromRGB(45, 48, 58), 1, 0)
+
+	return B
+end
+
+local function SetButton(B, active, color)
+	B:SetAttribute("Active", active)
+
+	if active then
+		Tween(B, {
+			BackgroundColor3 = color
+		}, 0.12):Play()
+	else
+		Tween(B, {
+			BackgroundColor3 = CARD
+		}, 0.12):Play()
+	end
+end
+
+local function Section(parent, text, y)
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(1, -28, 0, 24)
+	Label.Position = UDim2.new(0, 14, 0, y)
+	Label.BackgroundTransparency = 1
+	Label.Text = text
+	Label.TextColor3 = YELLOW
+	Label.TextSize = 11
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Font = Enum.Font.GothamBold
+	Label.Parent = parent
+	return Label
+end
+
+local function KeyButton(parent, text, y)
+	local B = Instance.new("TextButton")
+	B.Size = UDim2.new(0, 110, 0, 40)
+	B.Position = UDim2.new(1, -124, 0, y)
+	B.BackgroundColor3 = CARD
+	B.Text = text
+	B.TextColor3 = WHITE
+	B.TextSize = 12
+	B.Font = Enum.Font.GothamBold
+	B.AutoButtonColor = false
+	B.Parent = parent
+
+	AddCorner(B, 10)
+	AddStroke(B, Color3.fromRGB(48, 51, 62), 1)
+
+	B.MouseEnter:Connect(function()
+		Tween(B, {
+			BackgroundColor3 = CARD_HOVER
+		}, 0.12):Play()
+	end)
+
+	B.MouseLeave:Connect(function()
+		Tween(B, {
+			BackgroundColor3 = CARD
+		}, 0.12):Play()
+	end)
+
+	return B
+end
+
+local function CreateCard(parent, position, size)
+	local F = Instance.new("Frame")
+	F.Position = position
+	F.Size = size
+	F.BackgroundColor3 = PANEL_2
+	F.BorderSizePixel = 0
+	F.Parent = parent
+
+	AddCorner(F, 14)
+	AddStroke(F, Color3.fromRGB(42, 45, 56), 1)
+
+	return F
+end
+
+--========================================================
 -- OPEN BUTTON
 --========================================================
 
@@ -143,14 +326,20 @@ OpenButton.AutoButtonColor = false
 OpenButton.Active = true
 OpenButton.Parent = ScreenGui
 
-local OpenCorner = Instance.new("UICorner")
-OpenCorner.CornerRadius = UDim.new(1, 0)
-OpenCorner.Parent = OpenButton
+AddCorner(OpenButton, 100)
+AddStroke(OpenButton, YELLOW, 2, 0)
 
-local OpenStroke = Instance.new("UIStroke")
-OpenStroke.Color = YELLOW
-OpenStroke.Thickness = 2
-OpenStroke.Parent = OpenButton
+OpenButton.MouseEnter:Connect(function()
+	Tween(OpenButton, {
+		BackgroundColor3 = CARD_HOVER
+	}, 0.12):Play()
+end)
+
+OpenButton.MouseLeave:Connect(function()
+	Tween(OpenButton, {
+		BackgroundColor3 = PANEL
+	}, 0.12):Play()
+end)
 
 --========================================================
 -- MAIN FRAME
@@ -158,35 +347,26 @@ OpenStroke.Parent = OpenButton
 
 local Frame = Instance.new("Frame")
 Frame.Name = "Main"
-Frame.Size = UDim2.new(0, 370, 0, 650)
-Frame.Position = UDim2.new(0, 25, 0.5, -325)
+Frame.Size = UDim2.new(0, 390, 0, 670)
+Frame.Position = UDim2.new(0, 25, 0.5, -335)
 Frame.BackgroundColor3 = BG
 Frame.BorderSizePixel = 0
 Frame.Parent = ScreenGui
 
-local FrameCorner = Instance.new("UICorner")
-FrameCorner.CornerRadius = UDim.new(0, 20)
-FrameCorner.Parent = Frame
-
-local FrameStroke = Instance.new("UIStroke")
-FrameStroke.Color = YELLOW
-FrameStroke.Thickness = 1.5
-FrameStroke.Transparency = 0.2
-FrameStroke.Parent = Frame
+AddCorner(Frame, 22)
+AddStroke(Frame, YELLOW, 1.5, 0.15)
 
 --========================================================
 -- HEADER
 --========================================================
 
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 92)
+Header.Size = UDim2.new(1, 0, 0, 95)
 Header.BackgroundColor3 = PANEL
 Header.BorderSizePixel = 0
 Header.Parent = Frame
 
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 20)
-HeaderCorner.Parent = Header
+AddCorner(Header, 22)
 
 local HeaderFix = Instance.new("Frame")
 HeaderFix.Size = UDim2.new(1, 0, 0, 22)
@@ -200,25 +380,23 @@ HeaderFix.Parent = Header
 --========================================================
 
 local BananaIcon = Instance.new("TextLabel")
-BananaIcon.Size = UDim2.new(0, 54, 0, 54)
-BananaIcon.Position = UDim2.new(0, 15, 0, 19)
+BananaIcon.Size = UDim2.new(0, 56, 0, 56)
+BananaIcon.Position = UDim2.new(0, 15, 0, 18)
 BananaIcon.BackgroundColor3 = YELLOW
 BananaIcon.Text = "🍌"
 BananaIcon.TextSize = 29
 BananaIcon.Font = Enum.Font.GothamBold
 BananaIcon.Parent = Header
 
-local BananaCorner = Instance.new("UICorner")
-BananaCorner.CornerRadius = UDim.new(0, 16)
-BananaCorner.Parent = BananaIcon
+AddCorner(BananaIcon, 16)
 
 --========================================================
--- HEADER TITLE
+-- HEADER TEXT
 --========================================================
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -170, 0, 29)
-Title.Position = UDim2.new(0, 82, 0, 14)
+Title.Size = UDim2.new(1, -180, 0, 28)
+Title.Position = UDim2.new(0, 84, 0, 13)
 Title.BackgroundTransparency = 1
 Title.Text = "BANANA SCRIPT"
 Title.TextColor3 = WHITE
@@ -228,29 +406,27 @@ Title.Font = Enum.Font.GothamBold
 Title.Parent = Header
 
 local Subtitle = Instance.new("TextLabel")
-Subtitle.Size = UDim2.new(1, -170, 0, 20)
-Subtitle.Position = UDim2.new(0, 83, 0, 43)
+Subtitle.Size = UDim2.new(1, -180, 0, 20)
+Subtitle.Position = UDim2.new(0, 85, 0, 41)
 Subtitle.BackgroundTransparency = 1
-Subtitle.Text = "ChatGPT × TheYaruck"
+Subtitle.Text = "Modern UI • ChatGPT × TheYaruck"
 Subtitle.TextColor3 = GRAY
-Subtitle.TextSize = 12
+Subtitle.TextSize = 11
 Subtitle.TextXAlignment = Enum.TextXAlignment.Left
 Subtitle.Font = Enum.Font.Gotham
 Subtitle.Parent = Header
 
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(0, 70, 0, 23)
-Status.Position = UDim2.new(0, 82, 0, 64)
-Status.BackgroundColor3 = Color3.fromRGB(25, 70, 40)
+Status.Size = UDim2.new(0, 74, 0, 22)
+Status.Position = UDim2.new(0, 84, 0, 65)
+Status.BackgroundColor3 = Color3.fromRGB(24, 65, 38)
 Status.Text = "● ONLINE"
 Status.TextColor3 = GREEN
-Status.TextSize = 10
+Status.TextSize = 9
 Status.Font = Enum.Font.GothamBold
 Status.Parent = Header
 
-local StatusCorner = Instance.new("UICorner")
-StatusCorner.CornerRadius = UDim.new(1, 0)
-StatusCorner.Parent = Status
+AddCorner(Status, 100)
 
 --========================================================
 -- HEADER BUTTONS
@@ -258,7 +434,7 @@ StatusCorner.Parent = Status
 
 local SettingsButton = Instance.new("TextButton")
 SettingsButton.Size = UDim2.new(0, 38, 0, 38)
-SettingsButton.Position = UDim2.new(1, -100, 0, 27)
+SettingsButton.Position = UDim2.new(1, -100, 0, 25)
 SettingsButton.BackgroundColor3 = CARD
 SettingsButton.Text = "⚙"
 SettingsButton.TextColor3 = WHITE
@@ -267,13 +443,11 @@ SettingsButton.Font = Enum.Font.GothamBold
 SettingsButton.AutoButtonColor = false
 SettingsButton.Parent = Header
 
-local SettingsCorner = Instance.new("UICorner")
-SettingsCorner.CornerRadius = UDim.new(0, 11)
-SettingsCorner.Parent = SettingsButton
+AddCorner(SettingsButton, 11)
 
 local CloseButton = Instance.new("TextButton")
 CloseButton.Size = UDim2.new(0, 38, 0, 38)
-CloseButton.Position = UDim2.new(1, -52, 0, 27)
+CloseButton.Position = UDim2.new(1, -52, 0, 25)
 CloseButton.BackgroundColor3 = CARD
 CloseButton.Text = "×"
 CloseButton.TextColor3 = WHITE
@@ -282,23 +456,38 @@ CloseButton.Font = Enum.Font.GothamBold
 CloseButton.AutoButtonColor = false
 CloseButton.Parent = Header
 
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 11)
-CloseCorner.Parent = CloseButton
+AddCorner(CloseButton, 11)
+
+local function AddButtonHover(B)
+	B.MouseEnter:Connect(function()
+		Tween(B, {
+			BackgroundColor3 = CARD_HOVER
+		}, 0.12):Play()
+	end)
+
+	B.MouseLeave:Connect(function()
+		Tween(B, {
+			BackgroundColor3 = CARD
+		}, 0.12):Play()
+	end)
+end
+
+AddButtonHover(SettingsButton)
+AddButtonHover(CloseButton)
 
 --========================================================
--- TABS
+-- MAIN TABS
 --========================================================
 
 local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(1, -20, 0, 42)
-TabBar.Position = UDim2.new(0, 10, 0, 98)
+TabBar.Size = UDim2.new(1, -20, 0, 44)
+TabBar.Position = UDim2.new(0, 10, 0, 103)
 TabBar.BackgroundTransparency = 1
 TabBar.Parent = Frame
 
 local function MakeTab(text, x)
 	local B = Instance.new("TextButton")
-	B.Size = UDim2.new(1/3, -4, 1, 0)
+	B.Size = UDim2.new(1/3, -5, 1, 0)
 	B.Position = UDim2.new(x, 0, 0, 0)
 	B.BackgroundColor3 = CARD
 	B.Text = text
@@ -308,24 +497,38 @@ local function MakeTab(text, x)
 	B.AutoButtonColor = false
 	B.Parent = TabBar
 
-	local C = Instance.new("UICorner")
-	C.CornerRadius = UDim.new(0, 10)
-	C.Parent = B
+	AddCorner(B, 11)
+
+	B.MouseEnter:Connect(function()
+		if not B:GetAttribute("Active") then
+			Tween(B, {
+				BackgroundColor3 = CARD_HOVER
+			}, 0.12):Play()
+		end
+	end)
+
+	B.MouseLeave:Connect(function()
+		if not B:GetAttribute("Active") then
+			Tween(B, {
+				BackgroundColor3 = CARD
+			}, 0.12):Play()
+		end
+	end)
 
 	return B
 end
 
-local BananaTab = MakeTab("🍌 BANANA", 0)
-local BLBuyTab = MakeTab("🛒 BL BUY", 1/3)
-local ChatTab = MakeTab("💬 CHAT", 2/3)
+local BananaTab = MakeTab("🍌  BANANA", 0)
+local BLBuyTab = MakeTab("🛒  BL BUY", 1/3)
+local ChatTab = MakeTab("💬  CHAT", 2/3)
 
 --========================================================
 -- CONTENT HOLDER
 --========================================================
 
 local ContentHolder = Instance.new("Frame")
-ContentHolder.Size = UDim2.new(1, -20, 1, -152)
-ContentHolder.Position = UDim2.new(0, 10, 0, 145)
+ContentHolder.Size = UDim2.new(1, -20, 1, -160)
+ContentHolder.Position = UDim2.new(0, 10, 0, 155)
 ContentHolder.BackgroundTransparency = 1
 ContentHolder.Parent = Frame
 
@@ -336,7 +539,7 @@ local function CreateContent()
 	S.BorderSizePixel = 0
 	S.ScrollBarThickness = 3
 	S.ScrollBarImageColor3 = YELLOW
-	S.CanvasSize = UDim2.new(0, 0, 0, 900)
+	S.CanvasSize = UDim2.new(0, 0, 0, 1000)
 	S.Visible = false
 	S.Parent = ContentHolder
 	return S
@@ -347,163 +550,479 @@ local BLContent = CreateContent()
 local ChatContent = CreateContent()
 
 --========================================================
--- UI HELPERS
---========================================================
-
-local function Section(parent, text, y)
-	local Label = Instance.new("TextLabel")
-	Label.Size = UDim2.new(1, -28, 0, 25)
-	Label.Position = UDim2.new(0, 14, 0, y)
-	Label.BackgroundTransparency = 1
-	Label.Text = text
-	Label.TextColor3 = YELLOW
-	Label.TextSize = 11
-	Label.TextXAlignment = Enum.TextXAlignment.Left
-	Label.Font = Enum.Font.GothamBold
-	Label.Parent = parent
-	return Label
-end
-
-local function Button(parent, text, y)
-	local B = Instance.new("TextButton")
-	B.Size = UDim2.new(1, -28, 0, 46)
-	B.Position = UDim2.new(0, 14, 0, y)
-	B.BackgroundColor3 = CARD
-	B.Text = text
-	B.TextColor3 = WHITE
-	B.TextSize = 13
-	B.Font = Enum.Font.GothamBold
-	B.AutoButtonColor = false
-	B.Parent = parent
-
-	local C = Instance.new("UICorner")
-	C.CornerRadius = UDim.new(0, 12)
-	C.Parent = B
-
-	local S = Instance.new("UIStroke")
-	S.Color = Color3.fromRGB(48, 51, 62)
-	S.Thickness = 1
-	S.Parent = B
-
-	B.MouseEnter:Connect(function()
-		if not B:GetAttribute("Active") then
-			B.BackgroundColor3 = CARD_HOVER
-		end
-	end)
-
-	B.MouseLeave:Connect(function()
-		if not B:GetAttribute("Active") then
-			B.BackgroundColor3 = CARD
-		end
-	end)
-
-	return B
-end
-
-local function Box(parent, value, y)
-	local B = Instance.new("TextBox")
-	B.Size = UDim2.new(1, -28, 0, 38)
-	B.Position = UDim2.new(0, 14, 0, y)
-	B.BackgroundColor3 = PANEL
-	B.TextColor3 = WHITE
-	B.PlaceholderColor3 = DARK_GRAY
-	B.Text = tostring(value)
-	B.TextSize = 13
-	B.Font = Enum.Font.GothamBold
-	B.ClearTextOnFocus = false
-	B.Parent = parent
-
-	local C = Instance.new("UICorner")
-	C.CornerRadius = UDim.new(0, 10)
-	C.Parent = B
-
-	local S = Instance.new("UIStroke")
-	S.Color = Color3.fromRGB(45, 48, 58)
-	S.Thickness = 1
-	S.Parent = B
-
-	return B
-end
-
-local function SetButton(B, active, color)
-	B:SetAttribute("Active", active)
-
-	if active then
-		B.BackgroundColor3 = color
-	else
-		B.BackgroundColor3 = CARD
-	end
-end
-
-local function KeyButton(parent, text, y)
-	local B = Instance.new("TextButton")
-	B.Size = UDim2.new(0, 110, 0, 42)
-	B.Position = UDim2.new(1, -124, 0, y)
-	B.BackgroundColor3 = CARD
-	B.Text = text
-	B.TextColor3 = WHITE
-	B.TextSize = 12
-	B.Font = Enum.Font.GothamBold
-	B.AutoButtonColor = false
-	B.Parent = parent
-
-	local C = Instance.new("UICorner")
-	C.CornerRadius = UDim.new(0, 10)
-	C.Parent = B
-
-	return B
-end
-
---========================================================
 -- BANANA CONTENT
 --========================================================
 
 Section(BananaContent, "👁  VISUALS", 10)
-local ESPButton = Button(BananaContent, "👁   ESP: ON", 38)
 
-Section(BananaContent, "🌀  TELEPORT", 98)
-local TeleportButton = Button(BananaContent, "🌀   TELEPORT: OFF", 126)
-local DistanceBox = Box(BananaContent, TeleportDistance, 178)
-local TPButton = Button(BananaContent, "🚀   TP FORWARD", 224)
+local ESPButton = Button(
+	BananaContent,
+	"👁   ESP: ON",
+	38
+)
 
-Section(BananaContent, "👤  PLAYER TELEPORT", 286)
-local PlayerListButton = Button(BananaContent, "👤   SELECT PLAYER", 314)
-local RefreshPlayersButton = Button(BananaContent, "🔄   REFRESH PLAYERS", 366)
-local TPToPlayerButton = Button(BananaContent, "🚀   TP TO PLAYER", 418)
+--========================================================
+-- TELEPORT HEADER
+--========================================================
 
-Section(BananaContent, "⚡  MOVEMENT", 480)
-local SpeedButton = Button(BananaContent, "⚡   SPEED: OFF", 508)
-local SpeedBox = Box(BananaContent, WalkSpeed, 560)
+Section(BananaContent, "🚀  TELEPORT", 98)
 
-Section(BananaContent, "🧱  WALLHACK", 618)
-local WallhackButton = Button(BananaContent, "🧱   WALLHACK: OFF", 646)
+local TeleportCard = CreateCard(
+	BananaContent,
+	UDim2.new(0, 14, 0, 128),
+	UDim2.new(1, -28, 0, 300)
+)
 
-Section(BananaContent, "✈️  FLY", 704)
-local FlyButton = Button(BananaContent, "✈️   FLY: OFF", 732)
-local FlyBox = Box(BananaContent, FlySpeed, 784)
+local TeleportTitle = Instance.new("TextLabel")
+TeleportTitle.Size = UDim2.new(1, -24, 0, 25)
+TeleportTitle.Position = UDim2.new(0, 12, 0, 9)
+TeleportTitle.BackgroundTransparency = 1
+TeleportTitle.Text = "Teleport Center"
+TeleportTitle.TextColor3 = WHITE
+TeleportTitle.TextSize = 14
+TeleportTitle.TextXAlignment = Enum.TextXAlignment.Left
+TeleportTitle.Font = Enum.Font.GothamBold
+TeleportTitle.Parent = TeleportCard
 
-Section(BananaContent, "🛡️  AFK", 842)
-local AFKButton = Button(BananaContent, "🛡️   FULL AFK: OFF", 870)
+local TeleportSubtitle = Instance.new("TextLabel")
+TeleportSubtitle.Size = UDim2.new(1, -24, 0, 20)
+TeleportSubtitle.Position = UDim2.new(0, 12, 0, 32)
+TeleportSubtitle.BackgroundTransparency = 1
+TeleportSubtitle.Text = "Choose a teleport mode"
+TeleportSubtitle.TextColor3 = GRAY
+TeleportSubtitle.TextSize = 10
+TeleportSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+TeleportSubtitle.Font = Enum.Font.Gotham
+TeleportSubtitle.Parent = TeleportCard
 
-BananaContent.CanvasSize = UDim2.new(0, 0, 0, 940)
+--========================================================
+-- TELEPORT SUBTABS
+--========================================================
+
+local TPTabBar = Instance.new("Frame")
+TPTabBar.Size = UDim2.new(1, -24, 0, 38)
+TPTabBar.Position = UDim2.new(0, 12, 0, 60)
+TPTabBar.BackgroundTransparency = 1
+TPTabBar.Parent = TeleportCard
+
+local TPTabButtons = {}
+
+local function MakeTPTab(name, text, x)
+	local B = Instance.new("TextButton")
+	B.Size = UDim2.new(0.25, -4, 1, 0)
+	B.Position = UDim2.new(x, 0, 0, 0)
+	B.BackgroundColor3 = CARD
+	B.Text = text
+	B.TextColor3 = GRAY
+	B.TextSize = 9
+	B.Font = Enum.Font.GothamBold
+	B.AutoButtonColor = false
+	B.Parent = TPTabBar
+
+	AddCorner(B, 9)
+
+	TPTabButtons[name] = B
+
+	B.MouseEnter:Connect(function()
+		if CurrentTPTab ~= name then
+			Tween(B, {
+				BackgroundColor3 = CARD_HOVER
+			}, 0.1):Play()
+		end
+	end)
+
+	B.MouseLeave:Connect(function()
+		if CurrentTPTab ~= name then
+			Tween(B, {
+				BackgroundColor3 = CARD
+			}, 0.1):Play()
+		end
+	end)
+
+	return B
+end
+
+local ForwardTab = MakeTPTab(
+	"FORWARD",
+	"🚀 FORWARD",
+	0
+)
+
+local PlayerTab = MakeTPTab(
+	"PLAYER",
+	"👤 PLAYER",
+	0.25
+)
+
+local PointsTab = MakeTPTab(
+	"POINTS",
+	"📍 POINTS",
+	0.50
+)
+
+local TPSettingsTab = MakeTPTab(
+	"SETTINGS",
+	"⚙ SETTINGS",
+	0.75
+)
+
+--========================================================
+-- TELEPORT SUBPANELS
+--========================================================
+
+local function CreateTPPanel()
+	local P = Instance.new("Frame")
+	P.Size = UDim2.new(1, -24, 0, 184)
+	P.Position = UDim2.new(0, 12, 0, 106)
+	P.BackgroundTransparency = 1
+	P.Visible = false
+	P.Parent = TeleportCard
+	return P
+end
+
+local ForwardPanel = CreateTPPanel()
+local PlayerPanel = CreateTPPanel()
+local PointsPanel = CreateTPPanel()
+local TPSettingsPanel = CreateTPPanel()
+
+--========================================================
+-- FORWARD PANEL
+--========================================================
+
+local TeleportButton = Button(
+	ForwardPanel,
+	"🌀   TELEPORT: OFF",
+	4,
+	40
+)
+
+local ForwardLabel = Instance.new("TextLabel")
+ForwardLabel.Size = UDim2.new(1, -4, 0, 18)
+ForwardLabel.Position = UDim2.new(0, 2, 0, 51)
+ForwardLabel.BackgroundTransparency = 1
+ForwardLabel.Text = "DISTANCE"
+ForwardLabel.TextColor3 = GRAY
+ForwardLabel.TextSize = 9
+ForwardLabel.TextXAlignment = Enum.TextXAlignment.Left
+ForwardLabel.Font = Enum.Font.GothamBold
+ForwardLabel.Parent = ForwardPanel
+
+local DistanceBox = Instance.new("TextBox")
+DistanceBox.Size = UDim2.new(1, -4, 0, 34)
+DistanceBox.Position = UDim2.new(0, 2, 0, 71)
+DistanceBox.BackgroundColor3 = PANEL
+DistanceBox.TextColor3 = WHITE
+DistanceBox.PlaceholderColor3 = DARK_GRAY
+DistanceBox.Text = tostring(TeleportDistance)
+DistanceBox.TextSize = 12
+DistanceBox.Font = Enum.Font.GothamBold
+DistanceBox.ClearTextOnFocus = false
+DistanceBox.Parent = ForwardPanel
+
+AddCorner(DistanceBox, 9)
+AddStroke(DistanceBox, Color3.fromRGB(45, 48, 58), 1)
+
+local TPButton = Button(
+	ForwardPanel,
+	"🚀   TP FORWARD",
+	114,
+	42
+)
+
+--========================================================
+-- PLAYER PANEL
+--========================================================
+
+local PlayerListButton = Button(
+	PlayerPanel,
+	"👤   SELECT PLAYER",
+	4,
+	40
+)
+
+local RefreshPlayersButton = Button(
+	PlayerPanel,
+	"🔄   REFRESH PLAYERS",
+	50,
+	40
+)
+
+local TPToPlayerButton = Button(
+	PlayerPanel,
+	"🚀   TP TO PLAYER",
+	96,
+	42
+)
+
+local SelectedInfo = Instance.new("TextLabel")
+SelectedInfo.Size = UDim2.new(1, -4, 0, 18)
+SelectedInfo.Position = UDim2.new(0, 2, 0, 145)
+SelectedInfo.BackgroundTransparency = 1
+SelectedInfo.Text = "Select another player to teleport"
+SelectedInfo.TextColor3 = DARK_GRAY
+SelectedInfo.TextSize = 9
+SelectedInfo.Font = Enum.Font.Gotham
+SelectedInfo.TextXAlignment = Enum.TextXAlignment.Left
+SelectedInfo.Parent = PlayerPanel
+
+--========================================================
+-- POINTS PANEL
+--========================================================
+
+local PointRows = {}
+
+for i = 1, 5 do
+	local Row = Instance.new("Frame")
+	Row.Size = UDim2.new(1, 0, 0, 31)
+	Row.Position = UDim2.new(0, 0, 0, (i - 1) * 34)
+	Row.BackgroundTransparency = 1
+	Row.Parent = PointsPanel
+
+	local NameLabel = Instance.new("TextLabel")
+	NameLabel.Size = UDim2.new(0, 55, 1, 0)
+	NameLabel.Position = UDim2.new(0, 0, 0, 0)
+	NameLabel.BackgroundTransparency = 1
+	NameLabel.Text = "POINT " .. i
+	NameLabel.TextColor3 = WHITE
+	NameLabel.TextSize = 9
+	NameLabel.Font = Enum.Font.GothamBold
+	NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	NameLabel.Parent = Row
+
+	local StateLabel = Instance.new("TextLabel")
+	StateLabel.Size = UDim2.new(0, 50, 1, 0)
+	StateLabel.Position = UDim2.new(0, 55, 0, 0)
+	StateLabel.BackgroundTransparency = 1
+	StateLabel.Text = "EMPTY"
+	StateLabel.TextColor3 = DARK_GRAY
+	StateLabel.TextSize = 8
+	StateLabel.Font = Enum.Font.GothamBold
+	StateLabel.Parent = Row
+
+	local SaveButton = Instance.new("TextButton")
+	SaveButton.Size = UDim2.new(0, 72, 0, 29)
+	SaveButton.Position = UDim2.new(1, -150, 0, 1)
+	SaveButton.BackgroundColor3 = CARD
+	SaveButton.Text = "SAVE"
+	SaveButton.TextColor3 = WHITE
+	SaveButton.TextSize = 9
+	SaveButton.Font = Enum.Font.GothamBold
+	SaveButton.AutoButtonColor = false
+	SaveButton.Parent = Row
+
+	AddCorner(SaveButton, 8)
+
+	local TPPointButton = Instance.new("TextButton")
+	TPPointButton.Size = UDim2.new(0, 72, 0, 29)
+	TPPointButton.Position = UDim2.new(1, -74, 0, 1)
+	TPPointButton.BackgroundColor3 = CARD
+	TPPointButton.Text = "TP"
+	TPPointButton.TextColor3 = WHITE
+	TPPointButton.TextSize = 9
+	TPPointButton.Font = Enum.Font.GothamBold
+	TPPointButton.AutoButtonColor = false
+	TPPointButton.Parent = Row
+
+	AddCorner(TPPointButton, 8)
+
+	PointRows[i] = {
+		Row = Row,
+		State = StateLabel,
+		Save = SaveButton,
+		TP = TPPointButton
+	}
+end
+
+--========================================================
+-- TP SETTINGS PANEL
+--========================================================
+
+local TPOffsetLabel = Instance.new("TextLabel")
+TPOffsetLabel.Size = UDim2.new(1, -4, 0, 18)
+TPOffsetLabel.Position = UDim2.new(0, 2, 0, 2)
+TPOffsetLabel.BackgroundTransparency = 1
+TPOffsetLabel.Text = "PLAYER TP OFFSET"
+TPOffsetLabel.TextColor3 = GRAY
+TPOffsetLabel.TextSize = 9
+TPOffsetLabel.TextXAlignment = Enum.TextXAlignment.Left
+TPOffsetLabel.Font = Enum.Font.GothamBold
+TPOffsetLabel.Parent = TPSettingsPanel
+
+local TPOffsetBox = Instance.new("TextBox")
+TPOffsetBox.Size = UDim2.new(1, -4, 0, 34)
+TPOffsetBox.Position = UDim2.new(0, 2, 0, 22)
+TPOffsetBox.BackgroundColor3 = PANEL
+TPOffsetBox.TextColor3 = WHITE
+TPOffsetBox.Text = tostring(TeleportOffset)
+TPOffsetBox.TextSize = 12
+TPOffsetBox.Font = Enum.Font.GothamBold
+TPOffsetBox.ClearTextOnFocus = false
+TPOffsetBox.Parent = TPSettingsPanel
+
+AddCorner(TPOffsetBox, 9)
+AddStroke(TPOffsetBox, Color3.fromRGB(45, 48, 58), 1)
+
+local ResetVelocityButton = Instance.new("TextButton")
+ResetVelocityButton.Size = UDim2.new(1, -4, 0, 40)
+ResetVelocityButton.Position = UDim2.new(0, 2, 0, 66)
+ResetVelocityButton.BackgroundColor3 = CARD
+ResetVelocityButton.TextColor3 = WHITE
+ResetVelocityButton.TextSize = 11
+ResetVelocityButton.Font = Enum.Font.GothamBold
+ResetVelocityButton.AutoButtonColor = false
+ResetVelocityButton.Parent = TPSettingsPanel
+
+AddCorner(ResetVelocityButton, 10)
+
+local TPSettingsInfo = Instance.new("TextLabel")
+TPSettingsInfo.Size = UDim2.new(1, -4, 0, 45)
+TPSettingsInfo.Position = UDim2.new(0, 2, 0, 115)
+TPSettingsInfo.BackgroundTransparency = 1
+TPSettingsInfo.Text = "Offset changes the height used when teleporting to a player."
+TPSettingsInfo.TextColor3 = DARK_GRAY
+TPSettingsInfo.TextSize = 9
+TPSettingsInfo.Font = Enum.Font.Gotham
+TPSettingsInfo.TextWrapped = true
+TPSettingsInfo.TextXAlignment = Enum.TextXAlignment.Left
+TPSettingsInfo.Parent = TPSettingsPanel
+
+--========================================================
+-- TELEPORT SUBTAB SWITCH
+--========================================================
+
+local function SetTPTab(tab)
+	CurrentTPTab = tab
+
+	ForwardPanel.Visible = false
+	PlayerPanel.Visible = false
+	PointsPanel.Visible = false
+	TPSettingsPanel.Visible = false
+
+	for Name, ButtonObject in pairs(TPTabButtons) do
+		ButtonObject:SetAttribute("Active", Name == tab)
+
+		if Name == tab then
+			Tween(ButtonObject, {
+				BackgroundColor3 = CARD_ACTIVE,
+				TextColor3 = YELLOW_LIGHT
+			}, 0.12):Play()
+		else
+			Tween(ButtonObject, {
+				BackgroundColor3 = CARD,
+				TextColor3 = GRAY
+			}, 0.12):Play()
+		end
+	end
+
+	if tab == "FORWARD" then
+		ForwardPanel.Visible = true
+	elseif tab == "PLAYER" then
+		PlayerPanel.Visible = true
+	elseif tab == "POINTS" then
+		PointsPanel.Visible = true
+	elseif tab == "SETTINGS" then
+		TPSettingsPanel.Visible = true
+	end
+end
+
+ForwardTab.MouseButton1Click:Connect(function()
+	SetTPTab("FORWARD")
+end)
+
+PlayerTab.MouseButton1Click:Connect(function()
+	SetTPTab("PLAYER")
+end)
+
+PointsTab.MouseButton1Click:Connect(function()
+	SetTPTab("POINTS")
+end)
+
+TPSettingsTab.MouseButton1Click:Connect(function()
+	SetTPTab("SETTINGS")
+end)
+
+--========================================================
+-- OTHER BANANA FEATURES
+--========================================================
+
+Section(BananaContent, "⚡  MOVEMENT", 445)
+
+local SpeedButton = Button(
+	BananaContent,
+	"⚡   SPEED: OFF",
+	474
+)
+
+local SpeedBox = Box(
+	BananaContent,
+	WalkSpeed,
+	522
+)
+
+Section(BananaContent, "🧱  WALLHACK", 577)
+
+local WallhackButton = Button(
+	BananaContent,
+	"🧱   WALLHACK: OFF",
+	605
+)
+
+Section(BananaContent, "✈️  FLY", 663)
+
+local FlyButton = Button(
+	BananaContent,
+	"✈️   FLY: OFF",
+	691
+)
+
+local FlyBox = Box(
+	BananaContent,
+	FlySpeed,
+	739
+)
+
+Section(BananaContent, "🛡️  AFK", 794)
+
+local AFKButton = Button(
+	BananaContent,
+	"🛡️   FULL AFK: OFF",
+	822
+)
+
+BananaContent.CanvasSize = UDim2.new(0, 0, 0, 890)
 
 --========================================================
 -- BL BUY CONTENT
 --========================================================
 
 Section(BLContent, "🛒  AUTO BUY", 10)
-local AutoBuyButton = Button(BLContent, "🛒   AUTO BUY: OFF", 38)
+
+local AutoBuyButton = Button(
+	BLContent,
+	"🛒   AUTO BUY: OFF",
+	38
+)
 
 Section(BLContent, "⏱  INTERVAL", 98)
-local AutoBuyBox = Box(BLContent, AutoBuyMS, 126)
+
+local AutoBuyBox = Box(
+	BLContent,
+	AutoBuyMS,
+	126
+)
 
 Section(BLContent, "⚓  CHARACTER", 186)
-local AnchoredButton = Button(BLContent, "⚓   ANCHORED: OFF", 214)
+
+local AnchoredButton = Button(
+	BLContent,
+	"⚓   ANCHORED: OFF",
+	214
+)
 
 Section(BLContent, "💰  MONEY", 272)
 
 local MoneyLabel = Instance.new("TextLabel")
-MoneyLabel.Size = UDim2.new(1, -28, 0, 70)
+MoneyLabel.Size = UDim2.new(1, -28, 0, 78)
 MoneyLabel.Position = UDim2.new(0, 14, 0, 304)
 MoneyLabel.BackgroundColor3 = CARD
 MoneyLabel.Text = "$ 0"
@@ -512,9 +1031,8 @@ MoneyLabel.TextSize = 24
 MoneyLabel.Font = Enum.Font.GothamBold
 MoneyLabel.Parent = BLContent
 
-local MoneyCorner = Instance.new("UICorner")
-MoneyCorner.CornerRadius = UDim.new(0, 12)
-MoneyCorner.Parent = MoneyLabel
+AddCorner(MoneyLabel, 14)
+AddStroke(MoneyLabel, Color3.fromRGB(48, 51, 62), 1)
 
 BLContent.CanvasSize = UDim2.new(0, 0, 0, 410)
 
@@ -523,7 +1041,12 @@ BLContent.CanvasSize = UDim2.new(0, 0, 0, 410)
 --========================================================
 
 Section(ChatContent, "💃  DANCE 2", 10)
-local DanceButton = Button(ChatContent, "💃   DANCE 2: OFF", 38)
+
+local DanceButton = Button(
+	ChatContent,
+	"💃   DANCE 2: OFF",
+	38
+)
 
 local DanceInfo = Instance.new("TextLabel")
 DanceInfo.Size = UDim2.new(1, -28, 0, 45)
@@ -537,12 +1060,12 @@ DanceInfo.TextXAlignment = Enum.TextXAlignment.Left
 DanceInfo.Parent = ChatContent
 
 local DanceKeyLabel = Instance.new("TextLabel")
-DanceKeyLabel.Size = UDim2.new(0, 150, 0, 42)
+DanceKeyLabel.Size = UDim2.new(0, 150, 0, 40)
 DanceKeyLabel.Position = UDim2.new(0, 14, 0, 140)
 DanceKeyLabel.BackgroundTransparency = 1
 DanceKeyLabel.Text = "HOTKEY"
 DanceKeyLabel.TextColor3 = WHITE
-DanceKeyLabel.TextSize = 13
+DanceKeyLabel.TextSize = 12
 DanceKeyLabel.Font = Enum.Font.GothamBold
 DanceKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
 DanceKeyLabel.Parent = ChatContent
@@ -562,12 +1085,12 @@ local MouseUnlockButton = Button(
 )
 
 local MouseKeyLabel = Instance.new("TextLabel")
-MouseKeyLabel.Size = UDim2.new(0, 150, 0, 42)
+MouseKeyLabel.Size = UDim2.new(0, 150, 0, 40)
 MouseKeyLabel.Position = UDim2.new(0, 14, 0, 286)
 MouseKeyLabel.BackgroundTransparency = 1
 MouseKeyLabel.Text = "MOUSE HOTKEY"
 MouseKeyLabel.TextColor3 = WHITE
-MouseKeyLabel.TextSize = 13
+MouseKeyLabel.TextSize = 12
 MouseKeyLabel.Font = Enum.Font.GothamBold
 MouseKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
 MouseKeyLabel.Parent = ChatContent
@@ -585,8 +1108,8 @@ ChatContent.CanvasSize = UDim2.new(0, 0, 0, 360)
 --========================================================
 
 local SettingsFrame = Instance.new("Frame")
-SettingsFrame.Size = UDim2.new(0, 320, 0, 225)
-SettingsFrame.Position = UDim2.new(0, 50, 0.5, -112)
+SettingsFrame.Size = UDim2.new(0, 325, 0, 235)
+SettingsFrame.Position = UDim2.new(0, 50, 0.5, -117)
 SettingsFrame.BackgroundColor3 = PANEL
 SettingsFrame.BorderSizePixel = 0
 SettingsFrame.Visible = false
@@ -594,19 +1117,11 @@ SettingsFrame.ZIndex = 20
 SettingsFrame.Active = true
 SettingsFrame.Parent = ScreenGui
 
-local SettingsCorner2 = Instance.new("UICorner")
-SettingsCorner2.CornerRadius = UDim.new(0, 18)
-SettingsCorner2.Parent = SettingsFrame
-
-local SettingsStroke = Instance.new("UIStroke")
-SettingsStroke.Color = YELLOW
-SettingsStroke.Thickness = 2
-SettingsStroke.Transparency = 0.2
-SettingsStroke.Parent = SettingsFrame
+AddCorner(SettingsFrame, 18)
+AddStroke(SettingsFrame, YELLOW, 2, 0.2)
 
 local SettingsDragBar = Instance.new("Frame")
 SettingsDragBar.Size = UDim2.new(1, -60, 0, 55)
-SettingsDragBar.Position = UDim2.new(0, 0, 0, 0)
 SettingsDragBar.BackgroundTransparency = 1
 SettingsDragBar.ZIndex = 20
 SettingsDragBar.Active = true
@@ -636,9 +1151,7 @@ SettingsClose.AutoButtonColor = false
 SettingsClose.ZIndex = 21
 SettingsClose.Parent = SettingsFrame
 
-local SettingsCloseCorner = Instance.new("UICorner")
-SettingsCloseCorner.CornerRadius = UDim.new(0, 11)
-SettingsCloseCorner.Parent = SettingsClose
+AddCorner(SettingsClose, 11)
 
 local ChatGPTLabel = Instance.new("TextLabel")
 ChatGPTLabel.Size = UDim2.new(1, -36, 0, 25)
@@ -664,13 +1177,7 @@ ChatGPTLink.TextXAlignment = Enum.TextXAlignment.Center
 ChatGPTLink.ZIndex = 21
 ChatGPTLink.Parent = SettingsFrame
 
-local ChatGPTLinkCorner = Instance.new("UICorner")
-ChatGPTLinkCorner.CornerRadius = UDim.new(0, 10)
-ChatGPTLinkCorner.Parent = ChatGPTLink
-
---========================================================
--- COPY BUTTON
---========================================================
+AddCorner(ChatGPTLink, 10)
 
 local CopyLinkButton = Instance.new("TextButton")
 CopyLinkButton.Size = UDim2.new(1, -36, 0, 38)
@@ -684,15 +1191,13 @@ CopyLinkButton.AutoButtonColor = false
 CopyLinkButton.ZIndex = 21
 CopyLinkButton.Parent = SettingsFrame
 
-local CopyLinkCorner = Instance.new("UICorner")
-CopyLinkCorner.CornerRadius = UDim.new(0, 10)
-CopyLinkCorner.Parent = CopyLinkButton
+AddCorner(CopyLinkButton, 10)
 
 local MoreSettings = Instance.new("TextLabel")
 MoreSettings.Size = UDim2.new(1, -36, 0, 25)
 MoreSettings.Position = UDim2.new(0, 18, 0, 187)
 MoreSettings.BackgroundTransparency = 1
-MoreSettings.Text = "🍌 Banana Script • UI Edition"
+MoreSettings.Text = "🍌 Banana Script • Modern UI Edition"
 MoreSettings.TextColor3 = DARK_GRAY
 MoreSettings.TextSize = 12
 MoreSettings.Font = Enum.Font.Gotham
@@ -708,21 +1213,47 @@ local function SetTab(tab)
 	BLContent.Visible = false
 	ChatContent.Visible = false
 
-	BananaTab.BackgroundColor3 = CARD
-	BLBuyTab.BackgroundColor3 = CARD
-	ChatTab.BackgroundColor3 = CARD
+	BananaTab:SetAttribute("Active", false)
+	BLBuyTab:SetAttribute("Active", false)
+	ChatTab:SetAttribute("Active", false)
+
+	for _, tabButton in ipairs({
+		BananaTab,
+		BLBuyTab,
+		ChatTab
+	}) do
+		Tween(tabButton, {
+			BackgroundColor3 = CARD,
+			TextColor3 = WHITE
+		}, 0.12):Play()
+	end
 
 	if tab == "BANANA" then
 		BananaContent.Visible = true
-		BananaTab.BackgroundColor3 = Color3.fromRGB(55, 47, 20)
+		BananaTab:SetAttribute("Active", true)
+
+		Tween(BananaTab, {
+			BackgroundColor3 = CARD_ACTIVE,
+			TextColor3 = YELLOW_LIGHT
+		}, 0.12):Play()
 
 	elseif tab == "BLBUY" then
 		BLContent.Visible = true
-		BLBuyTab.BackgroundColor3 = Color3.fromRGB(55, 47, 20)
+		BLBuyTab:SetAttribute("Active", true)
+
+		Tween(BLBuyTab, {
+			BackgroundColor3 = CARD_ACTIVE,
+			TextColor3 = YELLOW_LIGHT
+		}, 0.12):Play()
 
 	elseif tab == "CHAT" then
 		ChatContent.Visible = true
-		ChatTab.BackgroundColor3 = Color3.fromRGB(55, 47, 20)
+		ChatTab:SetAttribute("Active", true)
+
+		Tween(ChatTab, {
+			BackgroundColor3 = CARD_ACTIVE,
+			TextColor3 = YELLOW_LIGHT
+		}, 0.12):Play()
 	end
 end
 
@@ -739,7 +1270,7 @@ ChatTab.MouseButton1Click:Connect(function()
 end)
 
 --========================================================
--- BUTTON STATES
+-- UPDATE BUTTONS
 --========================================================
 
 local function UpdateButtons()
@@ -854,8 +1385,36 @@ local function UpdateButtons()
 		and "🖱   MOUSE UNLOCK: ON"
 		or "🖱   MOUSE UNLOCK: OFF"
 
-	DanceKeyButton.Text = DanceHotkey.Name
-	MouseKeyButton.Text = MouseUnlockKey.Name
+	DanceKeyButton.Text =
+		DanceHotkey.Name
+
+	MouseKeyButton.Text =
+		MouseUnlockKey.Name
+
+	ResetVelocityButton.Text =
+		ResetVelocityOnTeleport
+		and "💨   RESET VELOCITY: ON"
+		or "💨   RESET VELOCITY: OFF"
+
+	if SelectedPlayer then
+		SelectedInfo.Text =
+			"Selected: " .. tostring(SelectedPlayer)
+	else
+		SelectedInfo.Text =
+			"Select another player to teleport"
+	end
+
+	for i = 1, 5 do
+		if TeleportPoints[i] then
+			PointRows[i].State.Text = "SAVED"
+			PointRows[i].State.TextColor3 = GREEN
+			PointRows[i].Save.Text = "SAVE"
+		else
+			PointRows[i].State.Text = "EMPTY"
+			PointRows[i].State.TextColor3 = DARK_GRAY
+			PointRows[i].Save.Text = "SAVE"
+		end
+	end
 end
 
 --========================================================
@@ -949,6 +1508,7 @@ PlayerListButton.MouseButton1Click:Connect(function()
 	if #list == 0 then
 		SelectedPlayer = nil
 		PlayerListButton.Text = "👤   NO OTHER PLAYERS"
+		UpdateButtons()
 		return
 	end
 
@@ -965,45 +1525,192 @@ PlayerListButton.MouseButton1Click:Connect(function()
 
 	SelectedPlayer = list[index].Name
 	PlayerListButton.Text = "👤   " .. SelectedPlayer
+
+	UpdateButtons()
 end)
 
-RefreshPlayersButton.MouseButton1Click:Connect(
-	RefreshPlayerList
-)
+RefreshPlayersButton.MouseButton1Click:Connect(function()
+	RefreshPlayerList()
+	UpdateButtons()
+end)
+
+--========================================================
+-- TP TO PLAYER
+--========================================================
 
 TPToPlayerButton.MouseButton1Click:Connect(function()
-	if not RootPart or not SelectedPlayer or AFKEnabled then
+
+	if not Character
+		or not RootPart
+		or not SelectedPlayer
+		or AFKEnabled then
 		return
 	end
 
 	local Target = Players:FindFirstChild(SelectedPlayer)
 
-	if Target and Target.Character then
-		local TargetRoot =
-			Target.Character:FindFirstChild("HumanoidRootPart")
+	if not Target or not Target.Character then
+		return
+	end
 
-		if TargetRoot then
-			RootPart.CFrame =
-				TargetRoot.CFrame
-				+ Vector3.new(0, 3, 0)
+	local TargetCharacter = Target.Character
+	local TargetRoot =
+		TargetCharacter:FindFirstChild("HumanoidRootPart")
+
+	if not TargetRoot then
+		return
+	end
+
+	local TargetCFrame =
+		TargetRoot.CFrame
+		+ Vector3.new(0, TeleportOffset, 0)
+
+	if ResetVelocityOnTeleport then
+		RootPart.AssemblyLinearVelocity = Vector3.zero
+		RootPart.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	pcall(function()
+		Character:PivotTo(TargetCFrame)
+	end)
+
+	if RootPart and RootPart.Parent then
+
+		RootPart.CFrame = TargetCFrame
+
+		if ResetVelocityOnTeleport then
+			RootPart.AssemblyLinearVelocity = Vector3.zero
+			RootPart.AssemblyAngularVelocity = Vector3.zero
 		end
+
 	end
 end)
 
+--========================================================
+-- TELEPORT POINTS
+--========================================================
+
+local function SaveTeleportPoint(index)
+
+	if not Character
+		or not RootPart
+		or AFKEnabled then
+		return false
+	end
+
+	TeleportPoints[index] = RootPart.CFrame
+
+	return true
+end
+
+local function TeleportToPoint(index)
+
+	if not Character
+		or not RootPart
+		or not TeleportPoints[index]
+		or AFKEnabled then
+		return
+	end
+
+	local PointCFrame = TeleportPoints[index]
+
+	if ResetVelocityOnTeleport then
+		RootPart.AssemblyLinearVelocity = Vector3.zero
+		RootPart.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	pcall(function()
+		Character:PivotTo(PointCFrame)
+	end)
+
+	if RootPart and RootPart.Parent then
+		RootPart.CFrame = PointCFrame
+
+		if ResetVelocityOnTeleport then
+			RootPart.AssemblyLinearVelocity = Vector3.zero
+			RootPart.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+for i = 1, 5 do
+
+	local Index = i
+
+	PointRows[i].Save.MouseButton1Click:Connect(function()
+
+		if SaveTeleportPoint(Index) then
+
+			PointRows[Index].State.Text = "SAVED"
+			PointRows[Index].State.TextColor3 = GREEN
+			PointRows[Index].Save.Text = "✅ SAVED"
+
+			task.delay(1.2, function()
+
+				if PointRows[Index]
+					and PointRows[Index].Save
+					and PointRows[Index].Save.Parent then
+
+					PointRows[Index].Save.Text = "SAVE"
+				end
+
+			end)
+		end
+	end)
+
+	PointRows[i].TP.MouseButton1Click:Connect(function()
+		TeleportToPoint(Index)
+	end)
+
+	PointRows[i].Save.MouseEnter:Connect(function()
+		Tween(PointRows[Index].Save, {
+			BackgroundColor3 = CARD_HOVER
+		}, 0.1):Play()
+	end)
+
+	PointRows[i].Save.MouseLeave:Connect(function()
+		Tween(PointRows[Index].Save, {
+			BackgroundColor3 = CARD
+		}, 0.1):Play()
+	end)
+
+	PointRows[i].TP.MouseEnter:Connect(function()
+		Tween(PointRows[Index].TP, {
+			BackgroundColor3 = CARD_HOVER
+		}, 0.1):Play()
+	end)
+
+	PointRows[i].TP.MouseLeave:Connect(function()
+		Tween(PointRows[Index].TP, {
+			BackgroundColor3 = CARD
+		}, 0.1):Play()
+	end)
+end
+
+--========================================================
+-- PLAYER REMOVING
+--========================================================
+
 Players.PlayerRemoving:Connect(function(p)
+
 	if p.Name == SelectedPlayer then
 		SelectedPlayer = nil
-		task.defer(RefreshPlayerList)
+
+		task.defer(function()
+			RefreshPlayerList()
+			UpdateButtons()
+		end)
 	end
 end)
 
 RefreshPlayerList()
 
 --========================================================
--- TELEPORT
+-- TELEPORT FORWARD
 --========================================================
 
 DistanceBox.FocusLost:Connect(function()
+
 	local N = tonumber(DistanceBox.Text)
 
 	if N then
@@ -1016,11 +1723,15 @@ DistanceBox.FocusLost:Connect(function()
 end)
 
 TeleportButton.MouseButton1Click:Connect(function()
-	TeleportEnabled = not TeleportEnabled
+
+	TeleportEnabled =
+		not TeleportEnabled
+
 	UpdateButtons()
 end)
 
 TPButton.MouseButton1Click:Connect(function()
+
 	if TeleportEnabled
 		and RootPart
 		and not AFKEnabled then
@@ -1028,7 +1739,35 @@ TPButton.MouseButton1Click:Connect(function()
 		RootPart.CFrame +=
 			RootPart.CFrame.LookVector
 			* TeleportDistance
+
 	end
+end)
+
+--========================================================
+-- TP SETTINGS
+--========================================================
+
+TPOffsetBox.FocusLost:Connect(function()
+
+	local N = tonumber(TPOffsetBox.Text)
+
+	if N then
+		TeleportOffset =
+			math.clamp(N, 0, 50)
+	end
+
+	TPOffsetBox.Text =
+		tostring(TeleportOffset)
+
+end)
+
+ResetVelocityButton.MouseButton1Click:Connect(function()
+
+	ResetVelocityOnTeleport =
+		not ResetVelocityOnTeleport
+
+	UpdateButtons()
+
 end)
 
 --========================================================
@@ -1036,29 +1775,35 @@ end)
 --========================================================
 
 SpeedBox.FocusLost:Connect(function()
+
 	local N = tonumber(SpeedBox.Text)
 
 	if N then
 		WalkSpeed =
-			math.clamp(N, 1, 200)
+			math.clamp(N, 1, 400)
 	end
 
 	SpeedBox.Text =
 		tostring(WalkSpeed)
 
 	if SpeedEnabled and Humanoid then
-		Humanoid.WalkSpeed = WalkSpeed
+		Humanoid.WalkSpeed =
+			WalkSpeed
 	end
 end)
 
 SpeedButton.MouseButton1Click:Connect(function()
-	SpeedEnabled = not SpeedEnabled
+
+	SpeedEnabled =
+		not SpeedEnabled
 
 	if Humanoid then
+
 		Humanoid.WalkSpeed =
 			SpeedEnabled
 			and WalkSpeed
 			or 16
+
 	end
 
 	UpdateButtons()
@@ -1069,7 +1814,10 @@ end)
 --========================================================
 
 WallhackButton.MouseButton1Click:Connect(function()
-	WallhackEnabled = not WallhackEnabled
+
+	WallhackEnabled =
+		not WallhackEnabled
+
 	UpdateButtons()
 end)
 
@@ -1078,11 +1826,12 @@ end)
 --========================================================
 
 FlyBox.FocusLost:Connect(function()
+
 	local N = tonumber(FlyBox.Text)
 
 	if N then
 		FlySpeed =
-			math.clamp(N, 1, 300)
+			math.clamp(N, 1, 400)
 	end
 
 	FlyBox.Text =
@@ -1161,7 +1910,6 @@ local function StartFly()
 			if not FlyEnabled
 				or not RootPart
 				or not FlyVelocity then
-
 				return
 			end
 
@@ -1207,7 +1955,8 @@ local function StartFly()
 
 			if Direction.Magnitude > 0 then
 				Direction =
-					Direction.Unit * FlySpeed
+					Direction.Unit
+					* FlySpeed
 			end
 
 			FlyVelocity.VectorVelocity =
@@ -1221,12 +1970,14 @@ local function StartFly()
 					Vector3.zero,
 					Look
 				)
+
 		end)
 end
 
 FlyButton.MouseButton1Click:Connect(function()
 
-	FlyEnabled = not FlyEnabled
+	FlyEnabled =
+		not FlyEnabled
 
 	if FlyEnabled and not AFKEnabled then
 		StartFly()
@@ -1244,7 +1995,8 @@ end)
 
 AFKButton.MouseButton1Click:Connect(function()
 
-	AFKEnabled = not AFKEnabled
+	AFKEnabled =
+		not AFKEnabled
 
 	if AFKEnabled then
 
@@ -1260,7 +2012,10 @@ AFKButton.MouseButton1Click:Connect(function()
 		end
 
 		if Character then
-			for _, Part in ipairs(Character:GetDescendants()) do
+			for _, Part in ipairs(
+				Character:GetDescendants()
+			) do
+
 				if Part:IsA("BasePart") then
 					Part.CanCollide = false
 				end
@@ -1301,7 +2056,10 @@ local function ApplyAnchored(value)
 		return
 	end
 
-	for _, part in ipairs(Character:GetDescendants()) do
+	for _, part in ipairs(
+		Character:GetDescendants()
+	) do
+
 		if part:IsA("BasePart") then
 			part.Anchored = value
 		end
@@ -1329,7 +2087,10 @@ AutoBuyBox.FocusLost:Connect(function()
 
 	if N then
 		AutoBuyMS =
-			math.max(1, math.floor(N))
+			math.max(
+				1,
+				math.floor(N)
+			)
 	end
 
 	AutoBuyBox.Text =
@@ -1346,22 +2107,27 @@ local function TriggerPrompt(prompt)
 	pcall(function()
 
 		if typeof(fireproximityprompt) == "function" then
+
 			fireproximityprompt(prompt)
 			return
 		end
 
 		prompt:InputHoldBegin()
+
 		task.wait(
 			math.max(
 				prompt.HoldDuration,
 				0
 			)
 		)
+
 		prompt:InputHoldEnd()
+
 	end)
 end
 
 AutoBuyButton.MouseButton1Click:Connect(function()
+
 	AutoBuyEnabled =
 		not AutoBuyEnabled
 
@@ -1381,7 +2147,10 @@ task.spawn(function()
 			) do
 
 				if obj:IsA("ProximityPrompt") then
-					table.insert(Prompts, obj)
+					table.insert(
+						Prompts,
+						obj
+					)
 				end
 			end
 
@@ -1399,7 +2168,9 @@ task.spawn(function()
 			end
 
 		else
+
 			task.wait(0.2)
+
 		end
 	end
 end)
@@ -1425,7 +2196,9 @@ local function FindMoney()
 		"Points"
 	}
 
-	for _, name in ipairs(PreferredNames) do
+	for _, name in ipairs(
+		PreferredNames
+	) do
 
 		local obj =
 			leaderstats:FindFirstChild(name)
@@ -1469,8 +2242,10 @@ local function UpdateMoney()
 			.. tostring(value)
 
 	else
+
 		MoneyLabel.Text =
 			"$ 0"
+
 	end
 end
 
@@ -1511,7 +2286,8 @@ local function StartDance()
 		return
 	end
 
-	if Humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+	if Humanoid.RigType ~=
+		Enum.HumanoidRigType.R6 then
 		return
 	end
 
@@ -1525,7 +2301,8 @@ local function StartDance()
 		Animator =
 			Instance.new("Animator")
 
-		Animator.Parent = Humanoid
+		Animator.Parent =
+			Humanoid
 	end
 
 	local Animation =
@@ -1536,9 +2313,11 @@ local function StartDance()
 
 	local Success, Track =
 		pcall(function()
+
 			return Animator:LoadAnimation(
 				Animation
 			)
+
 		end)
 
 	Animation:Destroy()
@@ -1563,7 +2342,9 @@ local function ToggleDance()
 		return
 	end
 
-	if Humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+	if Humanoid.RigType ~=
+		Enum.HumanoidRigType.R6 then
+
 		DanceEnabled = false
 		UpdateButtons()
 		return
@@ -1587,19 +2368,18 @@ DanceButton.MouseButton1Click:Connect(
 
 --========================================================
 -- MOUSE UNLOCK
--- ИСПРАВЛЕНО
 --========================================================
 
 local function ForceMouseUnlock()
 
 	pcall(function()
-		UIS.MouseBehavior = Enum.MouseBehavior.Default
+		UIS.MouseBehavior =
+			Enum.MouseBehavior.Default
 	end)
 
 	pcall(function()
 		UIS.MouseIconEnabled = true
 	end)
-
 end
 
 local function EnableMouseUnlock()
@@ -1609,10 +2389,6 @@ local function EnableMouseUnlock()
 			"BananaMouseUnlock"
 		)
 	end)
-
-	-- Ставим MouseBehavior каждый кадр.
-	-- Это не меняет интерфейс, только исправляет
-	-- работу самой функции Mouse Unlock.
 
 	RunService:BindToRenderStep(
 		"BananaMouseUnlock",
@@ -1678,11 +2454,15 @@ end)
 --========================================================
 
 CopyLinkButton.MouseEnter:Connect(function()
-	CopyLinkButton.BackgroundColor3 = CARD_HOVER
+	Tween(CopyLinkButton, {
+		BackgroundColor3 = CARD_HOVER
+	}, 0.12):Play()
 end)
 
 CopyLinkButton.MouseLeave:Connect(function()
-	CopyLinkButton.BackgroundColor3 = CARD
+	Tween(CopyLinkButton, {
+		BackgroundColor3 = CARD
+	}, 0.12):Play()
 end)
 
 CopyLinkButton.MouseButton1Click:Connect(function()
@@ -1707,7 +2487,8 @@ CopyLinkButton.MouseButton1Click:Connect(function()
 
 	if Success then
 
-		CopyLinkButton.Text = "✅  COPIED!"
+		CopyLinkButton.Text =
+			"✅  COPIED!"
 
 		task.delay(1.2, function()
 
@@ -1717,6 +2498,7 @@ CopyLinkButton.MouseButton1Click:Connect(function()
 				CopyLinkButton.Text =
 					"📋  COPY LINK"
 			end
+
 		end)
 
 	else
@@ -1732,6 +2514,7 @@ CopyLinkButton.MouseButton1Click:Connect(function()
 				CopyLinkButton.Text =
 					"📋  COPY LINK"
 			end
+
 		end)
 	end
 end)
@@ -1745,7 +2528,7 @@ local MainDragStart
 local MainStartPosition
 
 local MainDragArea = Instance.new("Frame")
-MainDragArea.Size = UDim2.new(1, -150, 0, 92)
+MainDragArea.Size = UDim2.new(1, -150, 0, 95)
 MainDragArea.Position = UDim2.new(0, 0, 0, 0)
 MainDragArea.BackgroundTransparency = 1
 MainDragArea.Active = true
@@ -1921,6 +2704,7 @@ UIS.InputEnded:Connect(function(Input)
 
 			Frame.Visible = true
 			OpenButton.Visible = false
+
 		end
 
 		OpenDragMoved = false
@@ -1935,6 +2719,7 @@ CloseButton.MouseButton1Click:Connect(function()
 
 	Frame.Visible = false
 	OpenButton.Visible = true
+
 end)
 
 --========================================================
@@ -1945,12 +2730,14 @@ DanceKeyButton.MouseButton1Click:Connect(function()
 
 	ChoosingDanceKey = true
 	DanceKeyButton.Text = "PRESS KEY"
+
 end)
 
 MouseKeyButton.MouseButton1Click:Connect(function()
 
 	SelectingMouseKey = true
 	MouseKeyButton.Text = "PRESS KEY"
+
 end)
 
 --========================================================
@@ -1958,10 +2745,6 @@ end)
 --========================================================
 
 UIS.InputBegan:Connect(function(Input, GameProcessed)
-
-	--====================================================
-	-- DANCE KEY SELECTION
-	--====================================================
 
 	if ChoosingDanceKey then
 
@@ -1980,10 +2763,6 @@ UIS.InputBegan:Connect(function(Input, GameProcessed)
 		end
 	end
 
-	--====================================================
-	-- MOUSE UNLOCK KEY SELECTION
-	--====================================================
-
 	if SelectingMouseKey then
 
 		if Input.UserInputType ==
@@ -2001,14 +2780,10 @@ UIS.InputBegan:Connect(function(Input, GameProcessed)
 		end
 	end
 
-	--====================================================
-	-- MOUSE UNLOCK HOTKEY
-	--====================================================
-
 	if Input.UserInputType ==
 		Enum.UserInputType.Keyboard
 		and Input.KeyCode ==
-		MouseUnlockKey then
+			MouseUnlockKey then
 
 		MouseUnlockEnabled =
 			not MouseUnlockEnabled
@@ -2023,22 +2798,14 @@ UIS.InputBegan:Connect(function(Input, GameProcessed)
 		return
 	end
 
-	--====================================================
-	-- GAME PROCESSED
-	--====================================================
-
 	if GameProcessed then
 		return
 	end
 
-	--====================================================
-	-- DANCE 2 HOTKEY
-	--====================================================
-
 	if Input.UserInputType ==
 		Enum.UserInputType.Keyboard
 		and Input.KeyCode ==
-		DanceHotkey then
+			DanceHotkey then
 
 		ToggleDance()
 		return
@@ -2055,7 +2822,9 @@ Player.CharacterAdded:Connect(function(char)
 
 	SetupCharacter(char)
 
-	if FlyEnabled and not AFKEnabled then
+	if FlyEnabled
+		and not AFKEnabled then
+
 		StartFly()
 	end
 
@@ -2092,6 +2861,7 @@ for _, OtherPlayer in ipairs(
 				task.wait(0.4)
 
 				CreateESP(char)
+
 			end
 		)
 	end
@@ -2106,8 +2876,10 @@ Players.PlayerAdded:Connect(
 				task.wait(0.4)
 
 				CreateESP(char)
+
 			end
 		)
+
 	end
 )
 
@@ -2143,7 +2915,8 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 
-	if AFKEnabled and RootPart then
+	if AFKEnabled
+		and RootPart then
 
 		RootPart.Anchored = true
 
@@ -2175,10 +2948,14 @@ end)
 -- START
 --========================================================
 
+SetTPTab("FORWARD")
 SetTab("BANANA")
+
 RefreshPlayerList()
 UpdateButtons()
 UpdateESP()
 UpdateMoney()
 
-print("🍌 Banana Script + BL BUY + CHAT + PLAYER TELEPORT loaded successfully!")
+print(
+	"🍌 Banana Script + Modern TP Categories + BL BUY + CHAT loaded successfully!"
+)
