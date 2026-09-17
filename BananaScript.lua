@@ -1,6 +1,6 @@
 --========================================================
--- 🍌 BANANA SCRIPT
--- MODERN UI EDITION
+-- 🍌 BANANA SCRIPT v2
+-- MODERN UI + BANANA RGB GLOW
 --========================================================
 
 local Players = game:GetService("Players")
@@ -24,6 +24,17 @@ local ResetVelocityOnTeleport = true
 
 local SpeedEnabled = false
 local WalkSpeed = 32
+
+-- Physics settings
+local DefaultGravity = workspace.Gravity
+local GravityValue = DefaultGravity
+local DefaultJumpPower = 50
+local JumpPowerValue = DefaultJumpPower
+
+-- RGB GLOW
+local RGBGlowEnabled = false
+local RGBConnection = nil
+local RGBStrokes = {}
 
 local WallhackEnabled = false
 
@@ -83,6 +94,10 @@ local function SetupCharacter(char)
 	else
 		Humanoid.WalkSpeed = 16
 	end
+
+	-- Apply saved jump settings after every respawn
+	Humanoid.UseJumpPower = true
+	Humanoid.JumpPower = JumpPowerValue
 
 	if AFKEnabled then
 		RootPart.Anchored = true
@@ -327,7 +342,7 @@ OpenButton.Active = true
 OpenButton.Parent = ScreenGui
 
 AddCorner(OpenButton, 100)
-AddStroke(OpenButton, YELLOW, 2, 0)
+local OpenStroke = AddStroke(OpenButton, YELLOW, 2, 0)
 
 OpenButton.MouseEnter:Connect(function()
 	Tween(OpenButton, {
@@ -354,7 +369,7 @@ Frame.BorderSizePixel = 0
 Frame.Parent = ScreenGui
 
 AddCorner(Frame, 22)
-AddStroke(Frame, YELLOW, 1.5, 0.15)
+local FrameStroke = AddStroke(Frame, YELLOW, 1.5, 0.15)
 
 --========================================================
 -- HEADER
@@ -389,6 +404,7 @@ BananaIcon.Font = Enum.Font.GothamBold
 BananaIcon.Parent = Header
 
 AddCorner(BananaIcon, 16)
+local BananaIconStroke = AddStroke(BananaIcon, YELLOW, 1.5, 0)
 
 --========================================================
 -- HEADER TEXT
@@ -989,7 +1005,31 @@ local AFKButton = Button(
 	822
 )
 
-BananaContent.CanvasSize = UDim2.new(0, 0, 0, 890)
+--========================================================
+-- PHYSICS
+--========================================================
+
+Section(BananaContent, "🪐  PHYSICS", 880)
+
+local GravityBox = Box(
+	BananaContent,
+	GravityValue,
+	908
+)
+
+local JumpPowerBox = Box(
+	BananaContent,
+	JumpPowerValue,
+	956
+)
+
+local ResetPhysicsButton = Button(
+	BananaContent,
+	"🔄   RESET PHYSICS",
+	1004
+)
+
+BananaContent.CanvasSize = UDim2.new(0, 0, 0, 1070)
 
 --========================================================
 -- BL BUY CONTENT
@@ -1108,8 +1148,8 @@ ChatContent.CanvasSize = UDim2.new(0, 0, 0, 360)
 --========================================================
 
 local SettingsFrame = Instance.new("Frame")
-SettingsFrame.Size = UDim2.new(0, 325, 0, 235)
-SettingsFrame.Position = UDim2.new(0, 50, 0.5, -117)
+SettingsFrame.Size = UDim2.new(0, 325, 0, 285)
+SettingsFrame.Position = UDim2.new(0, 50, 0.5, -142)
 SettingsFrame.BackgroundColor3 = PANEL
 SettingsFrame.BorderSizePixel = 0
 SettingsFrame.Visible = false
@@ -1165,9 +1205,23 @@ ChatGPTLabel.Font = Enum.Font.GothamBold
 ChatGPTLabel.ZIndex = 21
 ChatGPTLabel.Parent = SettingsFrame
 
+local RGBButton = Instance.new("TextButton")
+RGBButton.Size = UDim2.new(1, -36, 0, 38)
+RGBButton.Position = UDim2.new(0, 18, 0, 95)
+RGBButton.BackgroundColor3 = CARD
+RGBButton.Text = "🌈  RGB GLOW: OFF"
+RGBButton.TextColor3 = WHITE
+RGBButton.TextSize = 12
+RGBButton.Font = Enum.Font.GothamBold
+RGBButton.AutoButtonColor = false
+RGBButton.ZIndex = 21
+RGBButton.Parent = SettingsFrame
+AddCorner(RGBButton, 10)
+local RGBButtonStroke = AddStroke(RGBButton, Color3.fromRGB(48, 51, 62), 1, 0)
+
 local ChatGPTLink = Instance.new("TextLabel")
 ChatGPTLink.Size = UDim2.new(1, -36, 0, 38)
-ChatGPTLink.Position = UDim2.new(0, 18, 0, 95)
+ChatGPTLink.Position = UDim2.new(0, 18, 0, 148)
 ChatGPTLink.BackgroundColor3 = CARD
 ChatGPTLink.Text = "chatgpt.com"
 ChatGPTLink.TextColor3 = Color3.fromRGB(100, 180, 255)
@@ -1181,7 +1235,7 @@ AddCorner(ChatGPTLink, 10)
 
 local CopyLinkButton = Instance.new("TextButton")
 CopyLinkButton.Size = UDim2.new(1, -36, 0, 38)
-CopyLinkButton.Position = UDim2.new(0, 18, 0, 140)
+CopyLinkButton.Position = UDim2.new(0, 18, 0, 194)
 CopyLinkButton.BackgroundColor3 = CARD
 CopyLinkButton.Text = "📋  COPY LINK"
 CopyLinkButton.TextColor3 = WHITE
@@ -1195,7 +1249,7 @@ AddCorner(CopyLinkButton, 10)
 
 local MoreSettings = Instance.new("TextLabel")
 MoreSettings.Size = UDim2.new(1, -36, 0, 25)
-MoreSettings.Position = UDim2.new(0, 18, 0, 187)
+MoreSettings.Position = UDim2.new(0, 18, 0, 240)
 MoreSettings.BackgroundTransparency = 1
 MoreSettings.Text = "🍌 Banana Script • Modern UI Edition"
 MoreSettings.TextColor3 = DARK_GRAY
@@ -1396,6 +1450,14 @@ local function UpdateButtons()
 		and "💨   RESET VELOCITY: ON"
 		or "💨   RESET VELOCITY: OFF"
 
+	RGBButton.Text = RGBGlowEnabled
+		and "🌈  RGB GLOW: ON"
+		or "🌈  RGB GLOW: OFF"
+	RGBButton.BackgroundColor3 = RGBGlowEnabled
+		and Color3.fromRGB(54, 46, 20)
+		or CARD
+
+
 	if SelectedPlayer then
 		SelectedInfo.Text =
 			"Selected: " .. tostring(SelectedPlayer)
@@ -1416,6 +1478,45 @@ local function UpdateButtons()
 		end
 	end
 end
+
+--========================================================
+-- RGB GLOW
+--========================================================
+
+local function StartRGBGlow()
+	if RGBConnection then
+		RGBConnection:Disconnect()
+		RGBConnection = nil
+	end
+	RGBConnection = RunService.RenderStepped:Connect(function()
+		if not RGBGlowEnabled then return end
+		local wave = (math.sin(os.clock() * 2.4) + 1) * 0.5
+		local color = Color3.fromHSV(0.075 + wave * 0.065, 0.78, 1)
+		for _, stroke in ipairs(RGBStrokes) do
+			if stroke and stroke.Parent then
+				stroke.Color = color
+			end
+		end
+	end)
+end
+
+local function StopRGBGlow()
+	if RGBConnection then
+		RGBConnection:Disconnect()
+		RGBConnection = nil
+	end
+	for _, stroke in ipairs(RGBStrokes) do
+		if stroke and stroke.Parent then stroke.Color = YELLOW end
+	end
+end
+
+RGBStrokes = {OpenStroke, FrameStroke, BananaIconStroke, SettingsFrameStroke, RGBButtonStroke}
+
+RGBButton.MouseButton1Click:Connect(function()
+	RGBGlowEnabled = not RGBGlowEnabled
+	if RGBGlowEnabled then StartRGBGlow() else StopRGBGlow() end
+	UpdateButtons()
+end)
 
 --========================================================
 -- ESP
@@ -1807,6 +1908,52 @@ SpeedButton.MouseButton1Click:Connect(function()
 	end
 
 	UpdateButtons()
+end)
+
+
+--========================================================
+-- PHYSICS / GRAVITY + JUMP POWER
+--========================================================
+
+local function ApplyPhysics()
+	workspace.Gravity = GravityValue
+
+	if Humanoid then
+		Humanoid.UseJumpPower = true
+		Humanoid.JumpPower = JumpPowerValue
+	end
+end
+
+GravityBox.FocusLost:Connect(function()
+	local N = tonumber(GravityBox.Text)
+
+	if N then
+		GravityValue = math.clamp(N, 0, 1000)
+	end
+
+	GravityBox.Text = tostring(GravityValue)
+	ApplyPhysics()
+end)
+
+JumpPowerBox.FocusLost:Connect(function()
+	local N = tonumber(JumpPowerBox.Text)
+
+	if N then
+		JumpPowerValue = math.clamp(N, 0, 500)
+	end
+
+	JumpPowerBox.Text = tostring(JumpPowerValue)
+	ApplyPhysics()
+end)
+
+ResetPhysicsButton.MouseButton1Click:Connect(function()
+	GravityValue = DefaultGravity
+	JumpPowerValue = DefaultJumpPower
+
+	GravityBox.Text = tostring(GravityValue)
+	JumpPowerBox.Text = tostring(JumpPowerValue)
+
+	ApplyPhysics()
 end)
 
 --========================================================
@@ -2957,5 +3104,5 @@ UpdateESP()
 UpdateMoney()
 
 print(
-	"🍌 Banana Script + Modern TP Categories + BL BUY + CHAT loaded successfully!"
+	"🍌 Banana Script v2 + Banana RGB Glow loaded successfully!"
 )
