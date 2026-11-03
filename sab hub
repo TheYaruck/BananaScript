@@ -1,0 +1,1258 @@
+--[[
+    🍌 SAB HUB
+    Banana-themed compact hub for Steal a Brainrot
+
+    Modules:
+      1. Code Redeemer V3.1
+      2. Auto Buy (smart moving-Brainrot prompt filter)
+      3. Dig Finder 1.0
+
+    Each module has its own page and keeps running independently
+    when another page is selected.
+]]
+
+--// ENVIRONMENT / PREVIOUS VERSION CLEANUP
+local ENV = _G
+pcall(function()
+    if type(getgenv) == "function" then
+        ENV = getgenv()
+    end
+end)
+
+if type(ENV.__SAB_HUB_CLEANUP) == "function" then
+    pcall(ENV.__SAB_HUB_CLEANUP)
+end
+
+ENV.__SAB_HUB_TOKEN = (tonumber(ENV.__SAB_HUB_TOKEN) or 0) + 1
+local SCRIPT_TOKEN = ENV.__SAB_HUB_TOKEN
+local running = true
+
+local function alive()
+    return running and ENV.__SAB_HUB_TOKEN == SCRIPT_TOKEN
+end
+
+--// SERVICES
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+--// CONNECTION MANAGEMENT
+local connections = {}
+
+local function connect(signal, callback)
+    local connection = signal:Connect(callback)
+    table.insert(connections, connection)
+    return connection
+end
+
+--// BANANA THEME
+local YELLOW = Color3.fromRGB(255, 218, 58)
+local YELLOW_LIGHT = Color3.fromRGB(255, 232, 112)
+local BLACK = Color3.fromRGB(17, 17, 18)
+local PANEL = Color3.fromRGB(27, 27, 29)
+local PANEL_LIGHT = Color3.fromRGB(39, 39, 41)
+local WHITE = Color3.fromRGB(245, 245, 238)
+local MUTED = Color3.fromRGB(170, 170, 160)
+local GREEN = Color3.fromRGB(130, 220, 135)
+
+--// GUI HELPERS
+local function create(className, properties, parent)
+    local object = Instance.new(className)
+    for property, value in pairs(properties or {}) do
+        object[property] = value
+    end
+    object.Parent = parent
+    return object
+end
+
+local function addCorner(object, radius)
+    return create("UICorner", {
+        CornerRadius = UDim.new(0, radius or 8)
+    }, object)
+end
+
+local function makeButton(parent, text, position, size, background, textColor, textSize)
+    local button = create("TextButton", {
+        Position = position,
+        Size = size,
+        BackgroundColor3 = background or PANEL_LIGHT,
+        BorderSizePixel = 0,
+        Text = text,
+        TextColor3 = textColor or WHITE,
+        Font = Enum.Font.GothamBold,
+        TextSize = textSize or 11,
+        AutoButtonColor = true
+    }, parent)
+    addCorner(button, 7)
+    return button
+end
+
+local function makeLabel(parent, text, position, size, textColor, textSize, xAlign)
+    return create("TextLabel", {
+        Position = position,
+        Size = size,
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = textColor or MUTED,
+        Font = Enum.Font.Gotham,
+        TextSize = textSize or 10,
+        TextWrapped = true,
+        TextXAlignment = xAlign or Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center
+    }, parent)
+end
+
+-- Remove the previous GUI if it exists.
+local previousGui = playerGui:FindFirstChild("SAB_HUB")
+if previousGui then
+    previousGui:Destroy()
+end
+
+local gui = create("ScreenGui", {
+    Name = "SAB_HUB",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 999999,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+}, playerGui)
+
+--// MAIN WINDOW
+local frame = create("Frame", {
+    Name = "Main",
+    Size = UDim2.fromOffset(310, 278),
+    Position = UDim2.new(0.5, -155, 0.5, -139),
+    BackgroundColor3 = BLACK,
+    BorderSizePixel = 0,
+    Active = true
+}, gui)
+addCorner(frame, 12)
+create("UIStroke", {
+    Color = YELLOW,
+    Thickness = 1.5,
+    Transparency = 0.12
+}, frame)
+
+local topBar = create("Frame", {
+    Name = "TopBar",
+    Size = UDim2.new(1, 0, 0, 38),
+    BackgroundColor3 = Color3.fromRGB(34, 32, 24),
+    BorderSizePixel = 0,
+    Active = true
+}, frame)
+addCorner(topBar, 12)
+create("Frame", {
+    Size = UDim2.new(1, 0, 0, 10),
+    Position = UDim2.new(0, 0, 1, -10),
+    BackgroundColor3 = Color3.fromRGB(34, 32, 24),
+    BorderSizePixel = 0
+}, topBar)
+
+create("TextLabel", {
+    Position = UDim2.fromOffset(12, 0),
+    Size = UDim2.new(1, -75, 1, 0),
+    BackgroundTransparency = 1,
+    Text = "🍌  SAB HUB",
+    TextColor3 = YELLOW,
+    Font = Enum.Font.GothamBlack,
+    TextSize = 15,
+    TextXAlignment = Enum.TextXAlignment.Left
+}, topBar)
+
+local minimizeButton = makeButton(
+    topBar,
+    "—",
+    UDim2.new(1, -35, 0, 6),
+    UDim2.fromOffset(25, 25),
+    PANEL_LIGHT,
+    YELLOW,
+    14
+)
+
+local miniButton = makeButton(
+    gui,
+    "🍌 SAB HUB",
+    UDim2.fromOffset(18, 180),
+    UDim2.fromOffset(105, 34),
+    BLACK,
+    YELLOW,
+    11
+)
+miniButton.Visible = false
+addCorner(miniButton, 9)
+create("UIStroke", {
+    Color = YELLOW,
+    Thickness = 1.2,
+    Transparency = 0.1
+}, miniButton)
+
+--// TABS
+local tabBar = create("Frame", {
+    Position = UDim2.fromOffset(10, 45),
+    Size = UDim2.new(1, -20, 0, 30),
+    BackgroundTransparency = 1
+}, frame)
+
+local pages = {}
+local tabs = {}
+local activePage = nil
+
+local pageHolder = create("Frame", {
+    Position = UDim2.fromOffset(10, 82),
+    Size = UDim2.new(1, -20, 1, -92),
+    BackgroundColor3 = PANEL,
+    BorderSizePixel = 0
+}, frame)
+addCorner(pageHolder, 9)
+
+local function createPage(name)
+    local page = create("Frame", {
+        Name = name,
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Visible = false
+    }, pageHolder)
+    pages[name] = page
+    return page
+end
+
+local function showPage(name)
+    activePage = name
+    for pageName, page in pairs(pages) do
+        page.Visible = pageName == name
+    end
+    for tabName, button in pairs(tabs) do
+        local selected = tabName == name
+        button.BackgroundColor3 = selected and YELLOW or PANEL_LIGHT
+        button.TextColor3 = selected and BLACK or WHITE
+    end
+end
+
+local function createTab(name, label, x)
+    local button = makeButton(
+        tabBar,
+        label,
+        UDim2.fromOffset(x, 0),
+        UDim2.fromOffset(94, 30),
+        PANEL_LIGHT,
+        WHITE,
+        10
+    )
+    tabs[name] = button
+    connect(button.MouseButton1Click, function()
+        showPage(name)
+    end)
+    return button
+end
+
+local redeemPage = createPage("Redeem")
+local autoPage = createPage("AutoBuy")
+local digPage = createPage("DigFinder")
+
+createTab("Redeem", "CODE REDEEM", 0)
+createTab("AutoBuy", "AUTO BUY", 96)
+createTab("DigFinder", "DIG FINDER", 192)
+
+--// MINIMIZE / RESTORE
+connect(minimizeButton.MouseButton1Click, function()
+    frame.Visible = false
+    miniButton.Visible = true
+end)
+
+connect(miniButton.MouseButton1Click, function()
+    frame.Visible = true
+    miniButton.Visible = false
+end)
+
+--// DRAG WINDOW
+local dragging = false
+local dragStart
+local startPosition
+
+connect(topBar.InputBegan, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPosition = frame.Position
+    end
+end)
+
+connect(UserInputService.InputChanged, function(input)
+    if not dragging then
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+connect(UserInputService.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+--====================================================================
+-- MODULE 1: VOID AUTO REDEEM V3.1
+-- Original collection / marker / fallback / delivery logic preserved.
+--====================================================================
+
+local collecting = false
+local fallbackArmed = false
+local fragments = {}
+local collectionToken = 0
+local deliveryToken = 0
+local watchedLabels = {}
+local lastLabelText = {}
+
+local redeemStatus = makeLabel(
+    redeemPage,
+    "Готово. Ожидаю объявление...",
+    UDim2.fromOffset(10, 9),
+    UDim2.new(1, -20, 0, 70),
+    MUTED,
+    11
+)
+
+local rkdButton = makeButton(
+    redeemPage,
+    "РКД",
+    UDim2.fromOffset(10, 91),
+    UDim2.fromOffset(72, 34),
+    PANEL_LIGHT,
+    WHITE,
+    11
+)
+
+local finishButton = makeButton(
+    redeemPage,
+    "NO CODE",
+    UDim2.fromOffset(89, 91),
+    UDim2.fromOffset(105, 34),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+local restartButton = makeButton(
+    redeemPage,
+    "RESTART",
+    UDim2.fromOffset(201, 91),
+    UDim2.fromOffset(89, 34),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+local function setRedeemStatus(message)
+    if alive() and redeemStatus.Parent then
+        redeemStatus.Text = message
+    end
+end
+
+local function clearFragments()
+    table.clear(fragments)
+end
+
+local function updateFinishButton()
+    if collecting then
+        finishButton.Text = "FINISH CODE"
+        finishButton.BackgroundColor3 = YELLOW
+        finishButton.TextColor3 = BLACK
+    else
+        finishButton.Text = "NO CODE"
+        finishButton.BackgroundColor3 = PANEL_LIGHT
+        finishButton.TextColor3 = WHITE
+    end
+end
+
+local function updateRKDButton()
+    if fallbackArmed then
+        rkdButton.BackgroundColor3 = YELLOW
+        rkdButton.TextColor3 = BLACK
+    else
+        rkdButton.BackgroundColor3 = PANEL_LIGHT
+        rkdButton.TextColor3 = WHITE
+    end
+end
+
+local function findRedeemBox()
+    local codesGui = playerGui:FindFirstChild("Codes")
+    if not codesGui then
+        return nil
+    end
+
+    local innerCodes = codesGui:FindFirstChild("Codes")
+    local searchRoot = innerCodes or codesGui
+    local redeemFrame = searchRoot:FindFirstChild("CodeRedeem", true)
+
+    if not redeemFrame then
+        return nil
+    end
+
+    local textBox = redeemFrame:FindFirstChild("TextBox", true)
+    if textBox and textBox:IsA("TextBox") then
+        return textBox
+    end
+
+    return nil
+end
+
+local function deliverCode(code)
+    deliveryToken += 1
+    local myDelivery = deliveryToken
+    local textBox = findRedeemBox()
+
+    if not textBox then
+        setRedeemStatus("Redeem TextBox не найден.")
+        warn("[SAB HUB] Redeem TextBox not found")
+        return
+    end
+
+    local success, err = pcall(function()
+        textBox:CaptureFocus()
+        textBox.Text = code
+    end)
+
+    if not success then
+        setRedeemStatus("Ошибка вставки: " .. tostring(err))
+        return
+    end
+
+    setRedeemStatus("AUTO: отправляю " .. code)
+
+    task.defer(function()
+        if not alive() or myDelivery ~= deliveryToken then
+            return
+        end
+
+        if not textBox.Parent then
+            setRedeemStatus("TextBox исчез перед отправкой.")
+            return
+        end
+
+        local released = pcall(function()
+            textBox:ReleaseFocus(true)
+        end)
+
+        if released then
+            print("[SAB HUB] AUTO SENT:", code)
+            setRedeemStatus("AUTO: код отправлен.")
+        else
+            setRedeemStatus("Не удалось нажать Enter.")
+        end
+    end)
+end
+
+local function cleanFragment(raw)
+    raw = tostring(raw or "")
+    raw = raw:gsub("<.->", "")
+    raw = raw:lower()
+    return raw:gsub("[^%w_%-]", "")
+end
+
+local function startCollection()
+    collectionToken += 1
+    clearFragments()
+    collecting = true
+    setRedeemStatus("Сбор начат. Жду части кода...")
+    updateFinishButton()
+    print("[SAB HUB] Code collection started")
+end
+
+local finishCollection
+
+finishCollection = function(reason)
+    if not collecting or #fragments == 0 then
+        return
+    end
+
+    local code = table.concat(fragments)
+    collecting = false
+    clearFragments()
+    collectionToken += 1
+    updateFinishButton()
+
+    if code == "" then
+        setRedeemStatus("Пустой код.")
+        return
+    end
+
+    print("[SAB HUB] COMPLETE CODE:", code)
+    print("[SAB HUB] Finish reason:", reason)
+    deliverCode(code)
+end
+
+local function addFragment(raw)
+    if not collecting then
+        return
+    end
+
+    local fragment = cleanFragment(raw)
+    if fragment == "" then
+        return
+    end
+
+    table.insert(fragments, fragment)
+    print("[SAB HUB] Fragment " .. tostring(#fragments) .. ": " .. fragment)
+    setRedeemStatus(
+        "Собрано частей: " .. tostring(#fragments)
+        .. "\nЖду продолжение или FINISH CODE."
+    )
+    updateFinishButton()
+
+    if fragment:match("%d+$") then
+        finishCollection("instant numeric ending")
+    end
+end
+
+local function findStartMarker(raw)
+    local lower = tostring(raw or ""):lower()
+    local useStart, useEnd = lower:find("use%s+code")
+    local isStart, isEnd = lower:find("code%s+is")
+
+    if useStart and isStart then
+        if useStart <= isStart then
+            return useEnd
+        else
+            return isEnd
+        end
+    end
+
+    if useStart then
+        return useEnd
+    end
+
+    if isStart then
+        return isEnd
+    end
+
+    return nil
+end
+
+local function processNotification(rawText)
+    if not alive() then
+        return
+    end
+
+    local raw = tostring(rawText or "")
+    raw = raw:gsub("<.->", "")
+    local markerEnd = findStartMarker(raw)
+
+    if markerEnd then
+        print("[SAB HUB] Start marker detected:", raw)
+        fallbackArmed = false
+        updateRKDButton()
+        startCollection()
+
+        local tail = raw:sub(markerEnd + 1)
+        if tail ~= "" then
+            addFragment(tail)
+        end
+        return
+    end
+
+    if collecting then
+        addFragment(raw)
+        return
+    end
+
+    if fallbackArmed then
+        fallbackArmed = false
+        updateRKDButton()
+        print("[SAB HUB] Fallback activated:", raw)
+        startCollection()
+        addFragment(raw)
+    end
+end
+
+local function watchLabel(label)
+    if not label
+    or not label:IsA("TextLabel")
+    or label.Name ~= "Template"
+    or watchedLabels[label] then
+        return
+    end
+
+    watchedLabels[label] = true
+
+    local function inspect()
+        if not alive() or not label.Parent then
+            return
+        end
+
+        local currentText = label.Text
+        if not currentText or currentText == "" then
+            return
+        end
+
+        if lastLabelText[label] == currentText then
+            return
+        end
+
+        lastLabelText[label] = currentText
+        processNotification(currentText)
+    end
+
+    connect(label:GetPropertyChangedSignal("Text"), inspect)
+    task.delay(0.03, inspect)
+end
+
+local function setupNotificationWatcher()
+    local root = playerGui:WaitForChild("TopNotification", 25)
+
+    if not alive() then
+        return
+    end
+
+    if not root then
+        setRedeemStatus("TopNotification не найден.")
+        warn("[SAB HUB] TopNotification not found")
+        return
+    end
+
+    connect(root.DescendantAdded, function(object)
+        watchLabel(object)
+    end)
+
+    for _, object in ipairs(root:GetDescendants()) do
+        watchLabel(object)
+    end
+
+    setRedeemStatus("Готово. Ожидаю объявление...")
+    print("[SAB HUB] Notification watcher ready")
+end
+
+connect(rkdButton.MouseButton1Click, function()
+    if not alive() then
+        return
+    end
+
+    if collecting then
+        setRedeemStatus("Код уже собирается. Используй FINISH CODE или RESTART.")
+        return
+    end
+
+    fallbackArmed = not fallbackArmed
+    updateRKDButton()
+
+    if fallbackArmed then
+        setRedeemStatus("РКД включён. Жду следующее уведомление...")
+        print("[SAB HUB] RKD armed")
+    else
+        setRedeemStatus("РКД выключен. Ожидаю code is / use code...")
+        print("[SAB HUB] RKD disarmed")
+    end
+end)
+
+connect(finishButton.MouseButton1Click, function()
+    if not alive() then
+        return
+    end
+
+    if not collecting then
+        setRedeemStatus("Сейчас нет собираемого кода.")
+        return
+    end
+
+    finishCollection("FINISH CODE button")
+end)
+
+connect(restartButton.MouseButton1Click, function()
+    if not alive() then
+        return
+    end
+
+    collectionToken += 1
+    deliveryToken += 1
+    collecting = false
+    clearFragments()
+    fallbackArmed = true
+    updateFinishButton()
+    updateRKDButton()
+    setRedeemStatus("Сброшено. Жду следующее уведомление как первую часть кода...")
+    print("[SAB HUB] Restart pressed; fallback armed")
+end)
+
+--====================================================================
+-- MODULE 2: BL AUTO BUY
+-- Current submitted smart prompt filter and purchase interaction kept.
+--====================================================================
+
+local autoBuyPageStatus = makeLabel(
+    autoPage,
+    "Ожидаю промпт движущегося Brainrot...",
+    UDim2.fromOffset(10, 8),
+    UDim2.new(1, -20, 0, 30),
+    MUTED,
+    10
+)
+
+local autoBuyActive = false
+local anchored = false
+local visiblePrompts = {}
+local promptWorkers = {}
+
+local autoBuyButton = makeButton(
+    autoPage,
+    "AUTO BUY: OFF",
+    UDim2.fromOffset(10, 45),
+    UDim2.fromOffset(132, 34),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+makeLabel(
+    autoPage,
+    "INTERVAL (MS)",
+    UDim2.fromOffset(153, 42),
+    UDim2.fromOffset(125, 15),
+    MUTED,
+    9
+)
+
+local msBox = create("TextBox", {
+    Name = "AutoBuyMS",
+    Position = UDim2.fromOffset(153, 59),
+    Size = UDim2.fromOffset(125, 29),
+    BackgroundColor3 = PANEL_LIGHT,
+    BorderSizePixel = 0,
+    Text = "100",
+    PlaceholderText = "Milliseconds",
+    TextColor3 = WHITE,
+    PlaceholderColor3 = MUTED,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Center
+}, autoPage)
+addCorner(msBox, 7)
+
+local anchoredButton = makeButton(
+    autoPage,
+    "ANCHORED: OFF",
+    UDim2.fromOffset(10, 91),
+    UDim2.fromOffset(132, 34),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+local autoInfo = makeLabel(
+    autoPage,
+    "Фильтр: Purchase + имя Brainrot + цена. Магазины пропускаются.",
+    UDim2.fromOffset(10, 135),
+    UDim2.new(1, -20, 0, 35),
+    MUTED,
+    9
+)
+
+local function getAutoBuyDelay()
+    local ms = tonumber(msBox.Text)
+    if not ms then
+        ms = 100
+    end
+    if ms < 1 then
+        ms = 1
+    end
+    return ms / 1000
+end
+
+local function isBrainrotPurchasePrompt(prompt)
+    if not prompt
+    or not prompt:IsA("ProximityPrompt")
+    or not prompt.Parent then
+        return false
+    end
+
+    if prompt.ActionText ~= "Purchase" then
+        return false
+    end
+
+    local objectText = tostring(prompt.ObjectText or "")
+    local hasPrice = objectText:match("%$[%d,%.]+[KMBkmb]?$")
+
+    if not hasPrice then
+        return false
+    end
+
+    local attachment = prompt.Parent
+    if not attachment:IsA("Attachment") then
+        return false
+    end
+
+    local part = attachment.Parent
+    if not part or not part:IsA("BasePart") then
+        return false
+    end
+
+    local model = part.Parent
+    if not model or not model:IsA("Model") then
+        return false
+    end
+
+    return model.Parent == workspace
+end
+
+local function startPromptWorker(prompt)
+    if promptWorkers[prompt] then
+        return
+    end
+
+    local token = {}
+    promptWorkers[prompt] = token
+
+    task.spawn(function()
+        while alive()
+        and autoBuyActive
+        and promptWorkers[prompt] == token
+        and visiblePrompts[prompt]
+        and prompt.Parent
+        and prompt.Enabled do
+
+            if not isBrainrotPurchasePrompt(prompt) then
+                break
+            end
+
+            pcall(function()
+                prompt.HoldDuration = 0
+                prompt:InputHoldBegin()
+                prompt:InputHoldEnd()
+            end)
+
+            task.wait(getAutoBuyDelay())
+        end
+
+        if promptWorkers[prompt] == token then
+            promptWorkers[prompt] = nil
+        end
+    end)
+end
+
+connect(ProximityPromptService.PromptShown, function(prompt)
+    if isBrainrotPurchasePrompt(prompt) then
+        visiblePrompts[prompt] = true
+        autoBuyPageStatus.Text = "Найден Brainrot: " .. tostring(prompt.ObjectText)
+
+        if autoBuyActive then
+            startPromptWorker(prompt)
+        end
+    end
+end)
+
+connect(ProximityPromptService.PromptHidden, function(prompt)
+    visiblePrompts[prompt] = nil
+    promptWorkers[prompt] = nil
+end)
+
+connect(autoBuyButton.MouseButton1Click, function()
+    autoBuyActive = not autoBuyActive
+
+    autoBuyButton.Text = autoBuyActive and "AUTO BUY: ON" or "AUTO BUY: OFF"
+    autoBuyButton.BackgroundColor3 = autoBuyActive and YELLOW or PANEL_LIGHT
+    autoBuyButton.TextColor3 = autoBuyActive and BLACK or WHITE
+    autoBuyPageStatus.Text = autoBuyActive
+        and "Auto Buy включён. Ожидаю Brainrot..."
+        or "Auto Buy выключен."
+
+    if autoBuyActive then
+        for prompt in pairs(visiblePrompts) do
+            if prompt.Parent and prompt.Enabled then
+                startPromptWorker(prompt)
+            end
+        end
+    else
+        for prompt in pairs(promptWorkers) do
+            promptWorkers[prompt] = nil
+        end
+    end
+end)
+
+connect(anchoredButton.MouseButton1Click, function()
+    anchored = not anchored
+
+    anchoredButton.Text = anchored and "ANCHORED: ON" or "ANCHORED: OFF"
+    anchoredButton.BackgroundColor3 = anchored and YELLOW or PANEL_LIGHT
+    anchoredButton.TextColor3 = anchored and BLACK or WHITE
+
+    local char = player.Character or player.CharacterAdded:Wait()
+    if char then
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Anchored = anchored
+            end
+        end
+    end
+end)
+
+--====================================================================
+-- MODULE 3: VOID DIG FINDER 1.0
+-- Original folder detection and local marker logic preserved.
+--====================================================================
+
+local folderNames = {
+    DiggingDroppedPieces = {
+        label = "DROPPED",
+        color = Color3.fromRGB(80, 210, 255)
+    },
+    DiggingFoundPieces = {
+        label = "FOUND",
+        color = Color3.fromRGB(100, 255, 140)
+    },
+    DiggingTreasureMarkers = {
+        label = "TREASURE",
+        color = YELLOW
+    }
+}
+
+local digEnabled = true
+local digTargets = {}
+local digContainers = {}
+
+local digStatus = makeLabel(
+    digPage,
+    "Found: 0 | Waiting for digging event...",
+    UDim2.fromOffset(10, 9),
+    UDim2.new(1, -20, 0, 43),
+    MUTED,
+    10
+)
+
+local digToggle = makeButton(
+    digPage,
+    "ESP: ON",
+    UDim2.fromOffset(10, 60),
+    UDim2.fromOffset(130, 34),
+    YELLOW,
+    BLACK,
+    10
+)
+
+local digRefresh = makeButton(
+    digPage,
+    "REFRESH",
+    UDim2.fromOffset(150, 60),
+    UDim2.fromOffset(130, 34),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+makeLabel(
+    digPage,
+    "Ищет объекты в DiggingDroppedPieces, DiggingFoundPieces и DiggingTreasureMarkers.",
+    UDim2.fromOffset(10, 108),
+    UDim2.new(1, -20, 0, 52),
+    MUTED,
+    9
+)
+
+local function getAnchor(object)
+    if object:IsA("BasePart") then
+        return object
+    end
+
+    if object:IsA("Model") then
+        return object.PrimaryPart
+            or object:FindFirstChildWhichIsA("BasePart", true)
+    end
+
+    return object:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function getPositionText(position)
+    return string.format(
+        "X: %.0f  Y: %.0f  Z: %.0f",
+        position.X,
+        position.Y,
+        position.Z
+    )
+end
+
+local function updateDigStatus()
+    local count = 0
+    for object in pairs(digTargets) do
+        if object.Parent then
+            count += 1
+        end
+    end
+
+    digStatus.Text = "Found: " .. count .. " | ESP: "
+        .. (digEnabled and "ON" or "OFF")
+end
+
+local function createDigMarker(object, category)
+    local anchor = getAnchor(object)
+    if not anchor then
+        return
+    end
+
+    local data = folderNames[category]
+    if not data then
+        return
+    end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "SAB_HUB_DigMarker"
+    billboard.Adornee = anchor
+    billboard.Size = UDim2.fromOffset(190, 48)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Enabled = digEnabled
+    billboard.Parent = gui
+
+    local label = create("TextLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = BLACK,
+        BackgroundTransparency = 0.12,
+        BorderSizePixel = 0,
+        TextColor3 = data.color,
+        TextStrokeTransparency = 0.6,
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextWrapped = true,
+        Text = data.label .. ": " .. object.Name
+            .. "\n" .. getPositionText(anchor.Position)
+    }, billboard)
+    addCorner(label, 6)
+
+    digTargets[object].billboard = billboard
+end
+
+local function removeDigTarget(object)
+    local data = digTargets[object]
+    if not data then
+        return
+    end
+
+    if data.billboard then
+        data.billboard:Destroy()
+    end
+
+    if data.connection then
+        data.connection:Disconnect()
+    end
+
+    digTargets[object] = nil
+    updateDigStatus()
+end
+
+local function registerDigObject(object, container)
+    if digTargets[object] then
+        return
+    end
+
+    if not object:IsA("Model") and not object:IsA("BasePart") then
+        return
+    end
+
+    if not getAnchor(object) then
+        return
+    end
+
+    digTargets[object] = {
+        billboard = nil,
+        category = container.Name,
+        container = container
+    }
+
+    createDigMarker(object, container.Name)
+
+    digTargets[object].connection = connect(object.AncestryChanged, function()
+        if not object:IsDescendantOf(container) then
+            removeDigTarget(object)
+        end
+    end)
+
+    print(
+        "[SAB HUB DIG] Found:",
+        container.Name,
+        object.Name,
+        getPositionText(getAnchor(object).Position)
+    )
+
+    updateDigStatus()
+end
+
+local function getDigItemRoot(object, container)
+    local current = object
+    local candidate = nil
+
+    while current and current ~= container do
+        if current:IsA("Model") or current:IsA("BasePart") then
+            candidate = current
+        end
+
+        if current.Parent == container then
+            break
+        end
+
+        current = current.Parent
+    end
+
+    return candidate
+end
+
+local function scanDigContainer(container)
+    local function scanBranch(object)
+        if object:IsA("Model") or object:IsA("BasePart") then
+            registerDigObject(object, container)
+            return
+        end
+
+        for _, child in ipairs(object:GetChildren()) do
+            scanBranch(child)
+        end
+    end
+
+    for _, child in ipairs(container:GetChildren()) do
+        scanBranch(child)
+    end
+end
+
+local function connectDigContainer(container)
+    if digContainers[container] then
+        return
+    end
+
+    digContainers[container] = true
+    scanDigContainer(container)
+
+    connect(container.DescendantAdded, function(object)
+        local root = getDigItemRoot(object, container)
+        if root then
+            task.defer(function()
+                if alive() and root.Parent then
+                    registerDigObject(root, container)
+                end
+            end)
+        end
+    end)
+
+    connect(container.AncestryChanged, function()
+        if not container:IsDescendantOf(workspace) then
+            for object, data in pairs(digTargets) do
+                if data.container == container then
+                    removeDigTarget(object)
+                end
+            end
+            digContainers[container] = nil
+        end
+    end)
+end
+
+for name in pairs(folderNames) do
+    local folder = workspace:FindFirstChild(name)
+    if folder then
+        connectDigContainer(folder)
+    end
+end
+
+connect(workspace.ChildAdded, function(object)
+    if folderNames[object.Name] then
+        task.defer(function()
+            if alive() and object.Parent == workspace then
+                connectDigContainer(object)
+            end
+        end)
+    end
+end)
+
+connect(digToggle.MouseButton1Click, function()
+    digEnabled = not digEnabled
+
+    digToggle.Text = digEnabled and "ESP: ON" or "ESP: OFF"
+    digToggle.BackgroundColor3 = digEnabled and YELLOW or PANEL_LIGHT
+    digToggle.TextColor3 = digEnabled and BLACK or WHITE
+
+    for _, data in pairs(digTargets) do
+        if data.billboard then
+            data.billboard.Enabled = digEnabled
+        end
+    end
+
+    updateDigStatus()
+end)
+
+connect(digRefresh.MouseButton1Click, function()
+    for name in pairs(folderNames) do
+        local folder = workspace:FindFirstChild(name)
+        if folder then
+            connectDigContainer(folder)
+            scanDigContainer(folder)
+        end
+    end
+    updateDigStatus()
+end)
+
+--// CLEANUP
+local function cleanup()
+    if not running then
+        return
+    end
+
+    running = false
+    autoBuyActive = false
+
+    for _, connection in ipairs(connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+    table.clear(connections)
+
+    for object, data in pairs(digTargets) do
+        if data.connection then
+            pcall(function()
+                data.connection:Disconnect()
+            end)
+        end
+        if data.billboard then
+            pcall(function()
+                data.billboard:Destroy()
+            end)
+        end
+        digTargets[object] = nil
+    end
+
+    pcall(function()
+        gui:Destroy()
+    end)
+end
+
+ENV.__SAB_HUB_CLEANUP = cleanup
+
+--// STARTUP
+updateFinishButton()
+updateRKDButton()
+updateDigStatus()
+showPage("Redeem")
+
+task.spawn(setupNotificationWatcher)
+
+print("================================")
+print("🍌 SAB HUB LOADED")
+print("Modules: Code Redeemer / Auto Buy / Dig Finder")
+print("Banana theme enabled")
+print("================================")
+
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "🍌 SAB HUB",
+        Text = "Hub loaded successfully",
+        Duration = 3
+    })
+end)
