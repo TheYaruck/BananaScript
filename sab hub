@@ -1,245 +1,469 @@
 --[[
-    🍌 SAB HUB
-    Banana-themed compact hub for Steal a Brainrot
-    Categories:
-
-      1. Code
-
-      2. Auto Buy
-
-    Smaller compact UI, touch-friendly controls, weak-key caches, and serialized prompt handling
-    for lower-end devices. Manual purchases add unique names to a multi-target list.
-    Each category keeps running independently when another page is selected.
+    🍌 SAB HUB v16
+    Banana-themed compact hub for Steal a Brainrot.
+    Categories: Code / Auto Buy / Sammy Scanner.
+    v16 changes:
+      - Phone layout uses a much larger FINISH CODE touch target.
+      - RKD and RESTART use larger, separated touch controls below it.
+      - Header controls and the settings popup are grouped at the top-right.
+      - Sammy Scanner captures one complete TopNotification message at a time.
+      - Desktop layout remains compact; Sammy page expands only when opened.
 ]]
 --// ENVIRONMENT / PREVIOUS VERSION CLEANUP
+
 local ENV = _G
+
 pcall(function()
+
     if type(getgenv) == "function" then
+
         ENV = getgenv()
+
     end
+
 end)
+
 if type(ENV.__SAB_HUB_CLEANUP) == "function" then
+
     pcall(ENV.__SAB_HUB_CLEANUP)
+
 end
+
 ENV.__SAB_HUB_TOKEN = (tonumber(ENV.__SAB_HUB_TOKEN) or 0) + 1
+
 local SCRIPT_TOKEN = ENV.__SAB_HUB_TOKEN
+
 local running = true
+
 local function alive()
+
     return running and ENV.__SAB_HUB_TOKEN == SCRIPT_TOKEN
+
 end
+
 --// SERVICES
+
 local Players = game:GetService("Players")
+
 local UserInputService = game:GetService("UserInputService")
+
 local ProximityPromptService = game:GetService("ProximityPromptService")
+
 local TweenService = game:GetService("TweenService")
+
 local player = Players.LocalPlayer
+
 local playerGui = player:WaitForChild("PlayerGui")
+
 --// CONNECTION MANAGEMENT
+
 local connections = {}
+
 local function connect(signal, callback)
+
     local connection = signal:Connect(callback)
+
     table.insert(connections, connection)
+
     return connection
+
 end
+
 --// BANANA THEME
+
 local YELLOW = Color3.fromRGB(255, 218, 58)
+
 local YELLOW_LIGHT = Color3.fromRGB(255, 232, 112)
+
 local BLACK = Color3.fromRGB(17, 17, 18)
+
 local PANEL = Color3.fromRGB(27, 27, 29)
+
 local PANEL_LIGHT = Color3.fromRGB(39, 39, 41)
+
 local WHITE = Color3.fromRGB(245, 245, 238)
+
 local MUTED = Color3.fromRGB(170, 170, 160)
+
 local GREEN = Color3.fromRGB(130, 220, 135)
+
 --// GUI HELPERS
+
 local function create(className, properties, parent)
+
     local object = Instance.new(className)
+
     for property, value in pairs(properties or {}) do
+
         object[property] = value
+
     end
+
     object.Parent = parent
+
     return object
+
 end
+
 local function addCorner(object, radius)
+
     return create("UICorner", {
+
         CornerRadius = UDim.new(0, radius or 8)
+
     }, object)
+
 end
+
 local function makeButton(parent, text, position, size, background, textColor, textSize)
+
     local button = create("TextButton", {
+
         Position = position,
+
         Size = size,
+
         BackgroundColor3 = background or PANEL_LIGHT,
+
         BorderSizePixel = 0,
+
         Text = text,
+
         TextColor3 = textColor or WHITE,
+
         Font = Enum.Font.GothamBold,
+
         TextSize = textSize or 11,
+
         AutoButtonColor = true
+
     }, parent)
+
     addCorner(button, 7)
+
     return button
+
 end
+
 local function makeLabel(parent, text, position, size, textColor, textSize, xAlign)
+
     return create("TextLabel", {
+
         Position = position,
+
         Size = size,
+
         BackgroundTransparency = 1,
+
         Text = text,
+
         TextColor3 = textColor or MUTED,
+
         Font = Enum.Font.Gotham,
+
         TextSize = textSize or 10,
+
         TextWrapped = true,
+
         TextXAlignment = xAlign or Enum.TextXAlignment.Left,
+
         TextYAlignment = Enum.TextYAlignment.Center
+
     }, parent)
+
 end
+
 -- Remove the previous GUI if it exists.
+
 local previousGui = playerGui:FindFirstChild("SAB_HUB")
+
 if previousGui then
+
     previousGui:Destroy()
+
 end
+
 local gui = create("ScreenGui", {
+
     Name = "SAB_HUB",
+
     ResetOnSpawn = false,
+
     IgnoreGuiInset = true,
+
     DisplayOrder = 999999,
+
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
 }, playerGui)
+
 --// MAIN WINDOW
+
 local frame = create("Frame", {
+
     Name = "Main",
-    Size = UDim2.fromOffset(300, 260),
-    Position = UDim2.new(0.5, -150, 0.5, -130),
+
+    Size = UserInputService.TouchEnabled
+        and UDim2.fromOffset(340, 350)
+        or UDim2.fromOffset(300, 260),
+
+    Position = UserInputService.TouchEnabled
+        and UDim2.new(0.5, -170, 0.5, -175)
+        or UDim2.new(0.5, -150, 0.5, -130),
+
     BackgroundColor3 = BLACK,
+
     BorderSizePixel = 0,
+
     Active = true
+
 }, gui)
+
 addCorner(frame, 12)
+
 create("UIStroke", {
+
     Color = YELLOW,
+
     Thickness = 1.5,
+
     Transparency = 0.12
+
 }, frame)
+
+
 
 -- One UIScale keeps the larger controls readable and fitted on small touch screens.
+
 local uiScale = create("UIScale", { Scale = 1 }, frame)
+
 local function updateResponsiveScale()
+
     local camera = workspace.CurrentCamera
+
     local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+
     local scale = math.min(
+
         1,
-        (viewport.X - 24) / 300,
-        (viewport.Y - 48) / 310
+
+        (viewport.X - 24) / (UserInputService.TouchEnabled and 340 or 300),
+        (viewport.Y - 48) / (UserInputService.TouchEnabled and 390 or 305)
+
     )
+
     if UserInputService.TouchEnabled then
+
         uiScale.Scale = math.clamp(scale, 0.72, 1)
+
     else
+
         uiScale.Scale = 1
+
     end
+
 end
+
+
 
 local viewportConnection
+
 local function bindViewportListener()
+
     if viewportConnection then
+
         viewportConnection:Disconnect()
+
         viewportConnection = nil
+
     end
+
     local camera = workspace.CurrentCamera
+
     if camera then
+
         viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateResponsiveScale)
+
         table.insert(connections, viewportConnection)
+
     end
+
     updateResponsiveScale()
+
 end
+
+
 
 connect(workspace:GetPropertyChangedSignal("CurrentCamera"), bindViewportListener)
+
 bindViewportListener()
+
 local topBar = create("Frame", {
+
     Name = "TopBar",
-    Size = UDim2.new(1, 0, 0, 38),
+
+    Size = UDim2.new(1, 0, 0, UserInputService.TouchEnabled and 46 or 38),
+
     BackgroundColor3 = Color3.fromRGB(34, 32, 24),
+
     BorderSizePixel = 0,
+
     Active = true
+
 }, frame)
+
 addCorner(topBar, 12)
+
 create("Frame", {
+
     Size = UDim2.new(1, 0, 0, 10),
+
     Position = UDim2.new(0, 0, 1, -10),
+
     BackgroundColor3 = Color3.fromRGB(34, 32, 24),
+
     BorderSizePixel = 0
+
 }, topBar)
+
 create("TextLabel", {
+
     Position = UDim2.fromOffset(12, 0),
-    Size = UDim2.new(1, -139, 1, 0),
+
+    Size = UDim2.new(1, UserInputService.TouchEnabled and -150 or -139, 1, 0),
+
     BackgroundTransparency = 1,
+
     Text = "🍌  SAB HUB",
+
     TextColor3 = YELLOW,
+
     Font = Enum.Font.GothamBlack,
+
     TextSize = 16,
+
     TextXAlignment = Enum.TextXAlignment.Left
+
 }, topBar)
+
 local settingsButton = makeButton(
+
     topBar,
+
     "⚙",
-    UDim2.new(1, -97, 0, 6),
-    UDim2.fromOffset(25, 25),
+
+    UserInputService.TouchEnabled and UDim2.new(1, -132, 0, 5) or UDim2.new(1, -97, 0, 6),
+
+    UserInputService.TouchEnabled and UDim2.fromOffset(38, 36) or UDim2.fromOffset(25, 25),
+
     PANEL_LIGHT,
+
     YELLOW,
+
     15
+
 )
+
 settingsButton.Name = "SettingsButton"
+
 local minimizeButton = makeButton(
+
     topBar,
+
     "—",
-    UDim2.new(1, -35, 0, 6),
-    UDim2.fromOffset(25, 25),
+
+    UserInputService.TouchEnabled and UDim2.new(1, -40, 0, 5) or UDim2.new(1, -35, 0, 6),
+
+    UserInputService.TouchEnabled and UDim2.fromOffset(35, 36) or UDim2.fromOffset(25, 25),
+
     PANEL_LIGHT,
+
     YELLOW,
+
     14
+
 )
+
 local secretButton = makeButton(
+
     topBar,
+
     "✦",
-    UDim2.new(1, -66, 0, 6),
-    UDim2.fromOffset(25, 25),
+
+    UserInputService.TouchEnabled and UDim2.new(1, -84, 0, 5) or UDim2.new(1, -66, 0, 6),
+
+    UserInputService.TouchEnabled and UDim2.fromOffset(38, 36) or UDim2.fromOffset(25, 25),
+
     PANEL_LIGHT,
+
     YELLOW,
+
     16
+
 )
+
 secretButton.Name = "SecretListButton"
+
 local miniButton = makeButton(
+
     gui,
+
     "🍌 SAB HUB",
+
     UDim2.fromOffset(18, 150),
+
     UDim2.fromOffset(105, 34),
+
     BLACK,
+
     YELLOW,
+
     11
+
 )
+
 miniButton.Visible = false
+
 if UserInputService.TouchEnabled then
+
     miniButton.Size = UDim2.fromOffset(125, 42)
+
 end
+
 addCorner(miniButton, 9)
+
 create("UIStroke", {
+
     Color = YELLOW,
+
     Thickness = 1.2,
+
     Transparency = 0.1
+
 }, miniButton)
 
+
+
 --// SECRET SPAWN LIST WINDOW
+
 -- The list records server announcements and attempts to correlate them with
+
 -- newly replicated Brainrot Purchase prompts. Unknown names stay explicitly unknown.
+
 local secretPanel = create("Frame", {
     Name = "SecretSpawnList",
-    Size = UDim2.fromOffset(248, 226),
+    Size = UserInputService.TouchEnabled
+        and UDim2.fromOffset(164, 150)
+        or UDim2.fromOffset(248, 226),
     Position = UDim2.new(1, 8, 0, 42),
     BackgroundColor3 = BLACK,
     BorderSizePixel = 0,
     Visible = false,
     Active = true
 }, frame)
+
 addCorner(secretPanel, 10)
+
 create("UIStroke", {
     Color = YELLOW,
     Thickness = 1.2,
@@ -247,66 +471,74 @@ create("UIStroke", {
 }, secretPanel)
 
 local secretHeader = create("Frame", {
-    Size = UDim2.new(1, 0, 0, 34),
+    Size = UDim2.new(1, 0, 0, UserInputService.TouchEnabled and 28 or 34),
     BackgroundColor3 = Color3.fromRGB(34, 32, 24),
     BorderSizePixel = 0
 }, secretPanel)
 addCorner(secretHeader, 10)
+
 create("Frame", {
-    Size = UDim2.new(1, 0, 0, 8),
-    Position = UDim2.new(0, 0, 1, -8),
+    Size = UDim2.new(1, 0, 0, UserInputService.TouchEnabled and 7 or 8),
+    Position = UDim2.new(0, 0, 1, UserInputService.TouchEnabled and -7 or -8),
     BackgroundColor3 = Color3.fromRGB(34, 32, 24),
     BorderSizePixel = 0
 }, secretHeader)
+
 makeLabel(
     secretHeader,
     "✦  SECRET SPAWNS",
-    UDim2.fromOffset(10, 0),
-    UDim2.new(1, -46, 1, 0),
+    UDim2.fromOffset(UserInputService.TouchEnabled and 7 or 10, 0),
+    UDim2.new(1, UserInputService.TouchEnabled and -36 or -46, 1, 0),
     YELLOW,
-    12
+    UserInputService.TouchEnabled and 9 or 12
 )
+
 local secretCloseButton = makeButton(
     secretHeader,
     "×",
-    UDim2.new(1, -29, 0, 5),
-    UDim2.fromOffset(22, 22),
+    UDim2.new(1, UserInputService.TouchEnabled and -23 or -29, 0, UserInputService.TouchEnabled and 4 or 5),
+    UserInputService.TouchEnabled and UDim2.fromOffset(18, 18) or UDim2.fromOffset(22, 22),
     PANEL_LIGHT,
     WHITE,
-    16
+    UserInputService.TouchEnabled and 13 or 16
 )
+
 local secretCountLabel = makeLabel(
     secretPanel,
     "SPAWNED: 0",
-    UDim2.fromOffset(10, 38),
-    UDim2.new(1, -20, 0, 18),
+    UDim2.fromOffset(UserInputService.TouchEnabled and 7 or 10, UserInputService.TouchEnabled and 30 or 38),
+    UDim2.new(1, UserInputService.TouchEnabled and -14 or -20, 0, UserInputService.TouchEnabled and 15 or 18),
     MUTED,
-    9
+    UserInputService.TouchEnabled and 8 or 9
 )
+
 local secretScroll = create("ScrollingFrame", {
     Name = "Entries",
-    Position = UDim2.fromOffset(8, 60),
-    Size = UDim2.new(1, -16, 1, -68),
+    Position = UDim2.fromOffset(UserInputService.TouchEnabled and 6 or 8, UserInputService.TouchEnabled and 49 or 60),
+    Size = UDim2.new(1, UserInputService.TouchEnabled and -12 or -16, 1, UserInputService.TouchEnabled and -55 or -68),
     BackgroundColor3 = PANEL,
     BorderSizePixel = 0,
-    ScrollBarThickness = 4,
+    ScrollBarThickness = UserInputService.TouchEnabled and 3 or 4,
     ScrollBarImageColor3 = YELLOW,
     CanvasSize = UDim2.fromOffset(0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y
 }, secretPanel)
 addCorner(secretScroll, 7)
+
 create("UIPadding", {
-    PaddingTop = UDim.new(0, 5),
-    PaddingBottom = UDim.new(0, 5),
-    PaddingLeft = UDim.new(0, 5),
-    PaddingRight = UDim.new(0, 5)
+    PaddingTop = UDim.new(0, UserInputService.TouchEnabled and 3 or 5),
+    PaddingBottom = UDim.new(0, UserInputService.TouchEnabled and 3 or 5),
+    PaddingLeft = UDim.new(0, UserInputService.TouchEnabled and 3 or 5),
+    PaddingRight = UDim.new(0, UserInputService.TouchEnabled and 3 or 5)
 }, secretScroll)
+
 local secretListLayout = create("UIListLayout", {
-    Padding = UDim.new(0, 5),
+    Padding = UDim.new(0, UserInputService.TouchEnabled and 3 or 5),
     SortOrder = Enum.SortOrder.LayoutOrder
 }, secretScroll)
 
 local secretEntries = {}
+
 local function renderSecretEntries()
     for _, child in ipairs(secretScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then
@@ -321,9 +553,9 @@ local function renderSecretEntries()
             secretScroll,
             "Ожидаю Secret Spawn...",
             UDim2.new(0, 0, 0, 0),
-            UDim2.new(1, -4, 0, 54),
+            UDim2.new(1, -4, 0, UserInputService.TouchEnabled and 42 or 54),
             MUTED,
-            10
+            UserInputService.TouchEnabled and 8 or 10
         )
         empty.TextXAlignment = Enum.TextXAlignment.Center
         empty.LayoutOrder = 1
@@ -331,19 +563,20 @@ local function renderSecretEntries()
         for index, entry in ipairs(secretEntries) do
             local row = create("Frame", {
                 Name = "SecretEntry",
-                Size = UDim2.new(1, -4, 0, 48),
+                Size = UDim2.new(1, -4, 0, UserInputService.TouchEnabled and 36 or 48),
                 BackgroundColor3 = PANEL_LIGHT,
                 BorderSizePixel = 0,
                 LayoutOrder = index
             }, secretScroll)
             addCorner(row, 6)
+
             local title = makeLabel(
                 row,
                 "#" .. tostring(index) .. "  " .. entry.time .. "\n" .. entry.name,
-                UDim2.fromOffset(8, 3),
-                UDim2.new(1, -16, 1, -6),
+                UDim2.fromOffset(UserInputService.TouchEnabled and 5 or 8, 2),
+                UDim2.new(1, UserInputService.TouchEnabled and -10 or -16, 1, -4),
                 entry.identified and YELLOW_LIGHT or WHITE,
-                10
+                UserInputService.TouchEnabled and 8 or 10
             )
             title.TextYAlignment = Enum.TextYAlignment.Center
         end
@@ -357,443 +590,1085 @@ local function renderSecretEntries()
 end
 
 --// SECRET SPAWN TOAST
+
 -- A bold bottom-right notification, independent of the main hub window.
+
 local secretToast = create("Frame", {
+
     Name = "SecretSpawnToast",
+
     AnchorPoint = Vector2.new(1, 1),
+
     Position = UDim2.new(1, -18, 1, 130),
+
     Size = UDim2.fromOffset(390, 124),
+
     BackgroundColor3 = BLACK,
+
     BackgroundTransparency = 1,
+
     BorderSizePixel = 0,
+
     Visible = false,
+
     ZIndex = 50
+
 }, gui)
+
 addCorner(secretToast, 12)
+
 local secretToastStroke = create("UIStroke", {
+
     Color = YELLOW,
+
     Thickness = 2,
+
     Transparency = 1
+
 }, secretToast)
+
 local secretToastScale = create("UIScale", { Scale = 1 }, secretToast)
 
+
+
 local secretToastAccent = create("Frame", {
+
     Name = "Accent",
+
     Position = UDim2.fromOffset(0, 12),
+
     Size = UDim2.fromOffset(5, 100),
+
     BackgroundColor3 = YELLOW,
+
     BackgroundTransparency = 1,
+
     BorderSizePixel = 0,
+
     ZIndex = 51
+
 }, secretToast)
+
 addCorner(secretToastAccent, 4)
 
+
+
 local secretToastTitle = create("TextLabel", {
+
     Name = "Title",
+
     Position = UDim2.fromOffset(17, 8),
+
     Size = UDim2.new(1, -29, 0, 38),
+
     BackgroundTransparency = 1,
+
     Text = "✦  SECRET SPAWNED!",
+
     TextColor3 = YELLOW,
+
     TextTransparency = 1,
+
     Font = Enum.Font.GothamBlack,
+
     TextSize = 25,
+
     TextXAlignment = Enum.TextXAlignment.Left,
+
     TextYAlignment = Enum.TextYAlignment.Center,
+
     ZIndex = 51
+
 }, secretToast)
+
+
 
 local secretToastMessage = create("TextLabel", {
+
     Name = "BrainrotName",
+
     Position = UDim2.fromOffset(18, 49),
+
     Size = UDim2.new(1, -30, 0, 67),
+
     BackgroundTransparency = 1,
+
     Text = "ОПРЕДЕЛЯЮ НАЗВАНИЕ...",
+
     TextColor3 = WHITE,
+
     TextTransparency = 1,
+
     Font = Enum.Font.GothamBlack,
+
     TextSize = 20,
+
     TextWrapped = true,
+
     TextXAlignment = Enum.TextXAlignment.Left,
+
     TextYAlignment = Enum.TextYAlignment.Center,
+
     ZIndex = 51
+
 }, secretToast)
 
+
+
 -- Popup notifications default to ON and retain the user's choice across reloads.
+
 -- Disabling popups never disables Secret Spawn history collection.
+
 local notificationsEnabled = ENV.__SAB_SECRET_NOTIFICATIONS ~= false
 
+
+
 local secretToastToken = 0
+
 local secretToastTweens = {}
+
 local activeSecretToastEntry = nil
 
+
+
 local function cancelSecretToastTweens()
+
     for _, tween in ipairs(secretToastTweens) do
+
         pcall(function()
+
             tween:Cancel()
+
         end)
+
     end
+
     table.clear(secretToastTweens)
+
 end
+
+
 
 local function playSecretToastTween(object, duration, properties)
+
     local tween = TweenService:Create(
+
         object,
+
         TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+
         properties
+
     )
+
     table.insert(secretToastTweens, tween)
+
     tween:Play()
+
     return tween
+
 end
+
+
 
 local function getSecretToastName(entry)
+
     if entry.identified then
+
         return tostring(entry.name)
+
     elseif entry.name == "Название не найдено" then
+
         return "НАЗВАНИЕ НЕ НАЙДЕНО"
+
     end
+
     return "ОПРЕДЕЛЯЮ НАЗВАНИЕ..."
+
 end
+
+
 
 local function updateSecretToastEntry(entry)
+
     if not secretToast.Visible or activeSecretToastEntry ~= entry then
+
         return
+
     end
+
     secretToastMessage.Text = getSecretToastName(entry)
+
 end
+
+
 
 local function showSecretToast(entry)
+
     if not notificationsEnabled then
+
         return
+
     end
+
+
 
     secretToastToken += 1
+
     local thisToken = secretToastToken
+
     activeSecretToastEntry = entry
+
     cancelSecretToastTweens()
 
+
+
     local camera = workspace.CurrentCamera
+
     local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+
     secretToastScale.Scale = math.clamp((viewport.X - 28) / 390, 0.68, 1)
 
+
+
     secretToastTitle.Text = entry.toastTitle or "✦  SECRET SPAWNED!"
+
     secretToastMessage.Text = getSecretToastName(entry)
 
+
+
     secretToast.Visible = true
+
     secretToast.Position = UDim2.new(1, -18, 1, 130)
+
     secretToast.BackgroundTransparency = 1
+
     secretToastStroke.Transparency = 1
+
     secretToastAccent.BackgroundTransparency = 1
+
     secretToastTitle.TextTransparency = 1
+
     secretToastMessage.TextTransparency = 1
 
+
+
     playSecretToastTween(secretToast, 0.28, {
+
         Position = UDim2.new(1, -18, 1, -18),
+
         BackgroundTransparency = 0.06
+
     })
+
     playSecretToastTween(secretToastStroke, 0.28, { Transparency = 0.08 })
+
     playSecretToastTween(secretToastAccent, 0.28, { BackgroundTransparency = 0 })
+
     playSecretToastTween(secretToastTitle, 0.28, { TextTransparency = 0 })
+
     playSecretToastTween(secretToastMessage, 0.28, { TextTransparency = 0 })
 
+
+
     task.delay(5.5, function()
+
         if not alive() or thisToken ~= secretToastToken then
+
             return
+
         end
+
+
 
         cancelSecretToastTweens()
+
         local outTween = playSecretToastTween(secretToast, 0.25, {
+
             Position = UDim2.new(1, -18, 1, 130),
+
             BackgroundTransparency = 1
+
         })
+
         playSecretToastTween(secretToastStroke, 0.25, { Transparency = 1 })
+
         playSecretToastTween(secretToastAccent, 0.25, { BackgroundTransparency = 1 })
+
         playSecretToastTween(secretToastTitle, 0.25, { TextTransparency = 1 })
+
         playSecretToastTween(secretToastMessage, 0.25, { TextTransparency = 1 })
 
+
+
         outTween.Completed:Wait()
+
         if alive() and thisToken == secretToastToken then
+
             secretToast.Visible = false
+
             activeSecretToastEntry = nil
+
             cancelSecretToastTweens()
+
         end
+
     end)
+
 end
+
+
 
 local function positionSecretPanel()
+
     local camera = workspace.CurrentCamera
+
     local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+
     local left = frame.AbsolutePosition.X
+
     local right = left + frame.AbsoluteSize.X
+
     local top = frame.AbsolutePosition.Y
+
     local bottom = top + frame.AbsoluteSize.Y
+
     local panelWidth = secretPanel.AbsoluteSize.X
+
     local panelHeight = secretPanel.AbsoluteSize.Y
 
+
+
     if viewport.X - right >= panelWidth + 8 then
+
         secretPanel.Position = UDim2.new(1, 8, 0, 42)
+
     elseif left >= panelWidth + 8 then
+
         secretPanel.Position = UDim2.new(0, -secretPanel.Size.X.Offset - 8, 0, 42)
+
     elseif viewport.Y - bottom >= panelHeight + 8 then
+
         secretPanel.Position = UDim2.new(0, 26, 1, 8)
+
     else
+
         -- On very small screens, open as an overlay inside the main panel.
+
         secretPanel.Position = UDim2.fromOffset(26, 42)
+
     end
+
 end
+
+
 
 local settingsPanel = nil
 
+
+
 connect(secretButton.Activated, function()
+
     if settingsPanel then
+
         settingsPanel.Visible = false
+
     end
+
     secretPanel.Visible = not secretPanel.Visible
+
     if secretPanel.Visible then
+
         positionSecretPanel()
+
     end
+
 end)
+
 connect(secretCloseButton.Activated, function()
+
     secretPanel.Visible = false
+
 end)
+
 connect(frame:GetPropertyChangedSignal("Position"), function()
+
     if secretPanel.Visible then
+
         positionSecretPanel()
+
     end
+
 end)
+
 connect(frame:GetPropertyChangedSignal("Size"), function()
+
     if secretPanel.Visible then
+
         task.defer(positionSecretPanel)
+
     end
+
 end)
+
 renderSecretEntries()
+
 --// TABS
+
 local tabBar = create("Frame", {
-    Position = UDim2.fromOffset(10, 42),
-    Size = UDim2.new(1, -20, 0, 30),
-    BackgroundTransparency = 1
+
+    Name = "CategoryTabs",
+
+    Position = UserInputService.TouchEnabled and UDim2.fromOffset(10, 52) or UDim2.fromOffset(10, 42),
+
+    Size = UDim2.new(1, -20, 0, UserInputService.TouchEnabled and 34 or 30),
+
+    BackgroundTransparency = 1,
+
+    ClipsDescendants = false,
+
+    ZIndex = 10
+
 }, frame)
+
 local pages = {}
+
 local tabs = {}
+
 local activePage = nil
+
 local pageHolder = create("Frame", {
-    Position = UDim2.fromOffset(10, 78),
-    Size = UDim2.new(1, -20, 1, -88),
+
+    Position = UserInputService.TouchEnabled and UDim2.fromOffset(10, 92) or UDim2.fromOffset(10, 78),
+
+    Size = UDim2.new(1, -20, 1, UserInputService.TouchEnabled and -102 or -88),
+
     BackgroundColor3 = PANEL,
+
     BorderSizePixel = 0
+
 }, frame)
+
 addCorner(pageHolder, 9)
+
 local function createPage(name)
+
     local page = create("Frame", {
+
         Name = name,
+
         Size = UDim2.fromScale(1, 1),
+
         BackgroundTransparency = 1,
+
         Visible = false
+
     }, pageHolder)
+
     pages[name] = page
+
     return page
+
 end
+
 local PAGE_HEIGHTS = {
-    Redeem = 260,
-    AutoBuy = 260
+
+    Redeem = UserInputService.TouchEnabled and 350 or 260,
+
+    AutoBuy = UserInputService.TouchEnabled and 350 or 260,
+
+    SammyScanner = UserInputService.TouchEnabled and 390 or 305
+
 }
 
+
+
 local function applyPageHeight(name)
+
     local newHeight = PAGE_HEIGHTS[name] or 305
+
     local oldHeight = frame.Size.Y.Offset
+
     if oldHeight ~= newHeight then
-        frame.Size = UDim2.fromOffset(300, newHeight)
+
+        frame.Size = UDim2.fromOffset(UserInputService.TouchEnabled and 340 or 300, newHeight)
+
         -- Keep the panel centered around its current position, even after dragging.
+
         frame.Position = UDim2.new(
+
             frame.Position.X.Scale,
+
             frame.Position.X.Offset,
+
             frame.Position.Y.Scale,
+
             frame.Position.Y.Offset + (oldHeight - newHeight) / 2
+
         )
+
     end
+
 end
+
+
 
 local function showPage(name)
+
     activePage = name
+
     applyPageHeight(name)
+
     for pageName, page in pairs(pages) do
+
         page.Visible = pageName == name
+
     end
+
     for tabName, button in pairs(tabs) do
+
         local selected = tabName == name
+
         button.BackgroundColor3 = selected and YELLOW or PANEL_LIGHT
+
         button.TextColor3 = selected and BLACK or WHITE
+
     end
+
 end
-local function createTab(name, label, x)
+
+local function createTab(name, label, index)
+
+    -- Use proportional sizing so all three tabs remain fully visible on
+    -- desktop and touch layouts, including scaled/narrow viewports.
     local button = makeButton(
+
         tabBar,
+
         label,
-        UDim2.fromOffset(x, 0),
-        UDim2.fromOffset(134, 30),
+
+        UDim2.new((index - 1) / 3, (index - 1) * 2, 0, 0),
+
+        UDim2.new(1 / 3, -4, 1, 0),
+
         PANEL_LIGHT,
+
         WHITE,
+
         10
+
     )
+
+    button.Name = "Tab_" .. name
+    button.ZIndex = 11
+
     tabs[name] = button
+
     connect(button.Activated, function()
+
         showPage(name)
+
     end)
+
     return button
+
 end
+
 local redeemPage = createPage("Redeem")
+
 local autoPage = createPage("AutoBuy")
-createTab("Redeem", "CODE", 0)
-createTab("AutoBuy", "AUTO BUY", 146)
---// MINIMIZE / RESTORE
-connect(minimizeButton.Activated, function()
-    frame.Visible = false
-    miniButton.Visible = true
-end)
-local miniDraggedJustNow = false
-local miniDragging = false
-local miniDragStart
-local miniStartPosition
 
-connect(miniButton.InputBegan, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        miniDragging = true
-        miniDraggedJustNow = false
-        miniDragStart = input.Position
-        miniStartPosition = miniButton.Position
-    end
-end)
+local sammyPage = createPage("SammyScanner")
 
-connect(UserInputService.InputChanged, function(input)
-    if not miniDragging then
-        return
-    end
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
-        local delta = input.Position - miniDragStart
-        if delta.Magnitude > 6 then
-            miniDraggedJustNow = true
-            local camera = workspace.CurrentCamera
-            local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
-            local maxX = math.max(0, viewport.X - miniButton.AbsoluteSize.X)
-            local maxY = math.max(0, viewport.Y - miniButton.AbsoluteSize.Y)
-            miniButton.Position = UDim2.fromOffset(
-                math.clamp(miniStartPosition.X.Offset + delta.X, 0, maxX),
-                math.clamp(miniStartPosition.Y.Offset + delta.Y, 0, maxY)
-            )
-        end
-    end
-end)
+-- Three equal, clearly named tabs. The SAMMY button is always the third tab.
+createTab("Redeem", "CODE", 1)
 
-connect(UserInputService.InputEnded, function(input)
-    if miniDragging and (
-        input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch
-    ) then
-        miniDragging = false
-        if miniDraggedJustNow then
-            task.delay(0.2, function()
-                miniDraggedJustNow = false
-            end)
-        end
-    end
-end)
+createTab("AutoBuy", "AUTO BUY", 2)
 
-connect(miniButton.Activated, function()
-    if miniDraggedJustNow then
-        miniDraggedJustNow = false
-        return
-    end
-    frame.Visible = true
-    miniButton.Visible = false
-end)
---// DRAG WINDOW
-local dragging = false
-local dragStart
-local startPosition
-connect(topBar.InputBegan, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPosition = frame.Position
-    end
-end)
-connect(UserInputService.InputChanged, function(input)
-    if not dragging then
-        return
-    end
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-    or input.UserInputType == Enum.UserInputType.Touch then
-        local delta = input.Position - dragStart
-        frame.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
-    end
-end)
-connect(UserInputService.InputEnded, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
---====================================================================
--- MODULE 1: VOID AUTO REDEEM V3.1
--- Original collection / marker / fallback / delivery logic preserved.
---====================================================================
-local collecting = false
-local fallbackArmed = false
-local fragments = {}
-local collectionToken = 0
-local deliveryToken = 0
-local watchedLabels = setmetatable({}, { __mode = "k" })
-local lastLabelText = setmetatable({}, { __mode = "k" })
-local redeemStatus = makeLabel(
-    redeemPage,
-    "Готово. Ожидаю объявление...",
-    UDim2.fromOffset(8, 7),
-    UDim2.new(1, -16, 0, 47),
+createTab("SammyScanner", "SAMMY", 3)
+
+--// SAMMY SCANNER UI
+-- Captures exactly one complete notification; it never joins separate messages.
+local sammyCaptureArmed = false
+local latestTopNotificationText = nil
+
+local sammyStatus = makeLabel(
+    sammyPage,
+    "Готово. Можно считать последнее сообщение или ждать следующее.",
+    UDim2.fromOffset(8, 5),
+    UDim2.new(1, -16, 0, 25),
     MUTED,
-    11
+    9
 )
-local rkdButton = makeButton(
-    redeemPage,
-    "РКД",
-    UDim2.fromOffset(8, 62),
-    UDim2.fromOffset(78, 36),
-    PANEL_LIGHT,
-    WHITE,
-    12
+
+local sammyMessageBox = create("TextBox", {
+    Name = "SammyMessage",
+    Position = UDim2.fromOffset(8, 33),
+    Size = UDim2.new(1, -16, 0, UserInputService.TouchEnabled and 150 or 95),
+    BackgroundColor3 = PANEL_LIGHT,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "Sammy message will appear here...",
+    PlaceholderColor3 = MUTED,
+    TextColor3 = WHITE,
+    Font = Enum.Font.Gotham,
+    TextSize = UserInputService.TouchEnabled and 13 or 11,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    ClearTextOnFocus = false,
+    MultiLine = true,
+    TextEditable = false,
+    Active = true,
+    Selectable = true
+}, sammyPage)
+addCorner(sammyMessageBox, 7)
+
+local sammyCount = makeLabel(
+    sammyPage,
+    "0 CHARACTERS · ONE MESSAGE",
+    UDim2.fromOffset(8, UserInputService.TouchEnabled and 187 or 133),
+    UDim2.new(1, -16, 0, 17),
+    MUTED,
+    8
 )
-local finishButton = makeButton(
-    redeemPage,
-    "NO CODE",
-    UDim2.fromOffset(94, 62),
-    UDim2.fromOffset(104, 36),
-    PANEL_LIGHT,
-    WHITE,
-    11
-)
-local restartButton = makeButton(
-    redeemPage,
-    "RESTART",
-    UDim2.fromOffset(206, 62),
-    UDim2.fromOffset(66, 36),
+sammyCount.TextXAlignment = Enum.TextXAlignment.Right
+
+local sammyLastButton = makeButton(
+    sammyPage,
+    "SCAN LAST",
+    UDim2.fromOffset(8, UserInputService.TouchEnabled and 210 or 158),
+    UserInputService.TouchEnabled and UDim2.fromOffset(148, 34) or UDim2.fromOffset(124, 28),
     PANEL_LIGHT,
     WHITE,
     10
 )
 
+local sammyNextButton = makeButton(
+    sammyPage,
+    "CAPTURE NEXT",
+    UserInputService.TouchEnabled and UDim2.fromOffset(164, 210) or UDim2.fromOffset(148, 158),
+    UserInputService.TouchEnabled and UDim2.fromOffset(148, 34) or UDim2.fromOffset(124, 28),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+local sammyCopyButton = makeButton(
+    sammyPage,
+    "COPY MESSAGE",
+    UDim2.fromOffset(8, UserInputService.TouchEnabled and 251 or 190),
+    UserInputService.TouchEnabled and UDim2.fromOffset(148, 34) or UDim2.fromOffset(124, 28),
+    YELLOW,
+    BLACK,
+    10
+)
+
+local sammyClearButton = makeButton(
+    sammyPage,
+    "CLEAR",
+    UserInputService.TouchEnabled and UDim2.fromOffset(164, 251) or UDim2.fromOffset(148, 188),
+    UserInputService.TouchEnabled and UDim2.fromOffset(148, 34) or UDim2.fromOffset(124, 28),
+    PANEL_LIGHT,
+    WHITE,
+    10
+)
+
+local function updateSammyCount()
+    local length = #sammyMessageBox.Text
+    pcall(function()
+        length = utf8.len(sammyMessageBox.Text) or length
+    end)
+    sammyCount.Text = tostring(length) .. " CHARACTERS · ONE MESSAGE"
+end
+
+local function updateSammyCaptureButton()
+    sammyNextButton.Text = sammyCaptureArmed and "CANCEL SCAN" or "CAPTURE NEXT"
+    sammyNextButton.BackgroundColor3 = sammyCaptureArmed and YELLOW or PANEL_LIGHT
+    sammyNextButton.TextColor3 = sammyCaptureArmed and BLACK or WHITE
+end
+
+local function setSammyMessage(rawText, statusText)
+    local messageText = tostring(rawText or ""):gsub("<.->", "")
+    if messageText:gsub("%s", "") == "" then
+        return false
+    end
+
+    -- Direct assignment is intentional: a riddle is always one complete message.
+    sammyMessageBox.Text = messageText
+    updateSammyCount()
+    sammyStatus.Text = statusText or "Сообщение Sammy захвачено. Можно копировать."
+    sammyStatus.TextColor3 = GREEN
+    return true
+end
+
+local function isSammyRelatedMessage(rawText)
+    local lower = tostring(rawText or ""):lower()
+    return lower:find("sammy", 1, true) ~= nil
+        or lower:find("riddle", 1, true) ~= nil
+end
+
+local function queueSammyNotification(rawText, sourceLabel)
+    rawText = tostring(rawText or "")
+    if rawText == "" then
+        return
+    end
+
+    latestTopNotificationText = rawText
+    local armedAtDetection = sammyCaptureArmed
+    if not armedAtDetection and not isSammyRelatedMessage(rawText) then
+        return
+    end
+
+    -- Let the UI finish assigning the full Text value before storing it.
+    task.delay(0.08, function()
+        if not alive() then
+            return
+        end
+        if armedAtDetection and not sammyCaptureArmed then
+            return
+        end
+        if sourceLabel and (not sourceLabel.Parent or sourceLabel.Text ~= rawText) then
+            return
+        end
+
+        if setSammyMessage(rawText, "Сообщение захвачено целиком. Можно копировать." ) then
+            if armedAtDetection then
+                sammyCaptureArmed = false
+                updateSammyCaptureButton()
+            end
+        end
+    end)
+end
+
+connect(sammyMessageBox:GetPropertyChangedSignal("Text"), updateSammyCount)
+
+connect(sammyLastButton.Activated, function()
+    if latestTopNotificationText and latestTopNotificationText ~= "" then
+        setSammyMessage(latestTopNotificationText, "Последнее сообщение TopNotification загружено.")
+    else
+        sammyStatus.Text = "Пока нет сообщений TopNotification."
+        sammyStatus.TextColor3 = MUTED
+    end
+end)
+
+connect(sammyNextButton.Activated, function()
+    sammyCaptureArmed = not sammyCaptureArmed
+    updateSammyCaptureButton()
+    if sammyCaptureArmed then
+        sammyStatus.Text = "Ожидаю следующее сообщение сверху..."
+        sammyStatus.TextColor3 = YELLOW
+    else
+        sammyStatus.Text = "Захват следующего сообщения отменён."
+        sammyStatus.TextColor3 = MUTED
+    end
+end)
+
+connect(sammyCopyButton.Activated, function()
+    local value = sammyMessageBox.Text
+    if value:gsub("%s", "") == "" then
+        sammyStatus.Text = "Сначала захвати сообщение Sammy."
+        sammyStatus.TextColor3 = MUTED
+        return
+    end
+
+    local clipboardFunction = ENV.setclipboard or ENV.toclipboard or ENV.writeclipboard
+        or _G.setclipboard or _G.toclipboard or _G.writeclipboard
+
+    if type(clipboardFunction) == "function" then
+        local ok = pcall(clipboardFunction, value)
+        if ok then
+            sammyStatus.Text = "Скопировано! Вставь сообщение сюда в чат."
+            sammyStatus.TextColor3 = GREEN
+            return
+        end
+    end
+
+    -- Fallback for executors without clipboard support: select the full TextBox.
+    pcall(function()
+        sammyMessageBox:CaptureFocus()
+        sammyMessageBox.CursorPosition = #value + 1
+        sammyMessageBox.SelectionStart = 1
+    end)
+    sammyStatus.Text = "Буфер обмена недоступен. Текст выделен — нажми Ctrl+C."
+    sammyStatus.TextColor3 = YELLOW
+end)
+
+connect(sammyClearButton.Activated, function()
+    sammyMessageBox.Text = ""
+    updateSammyCount()
+    sammyStatus.Text = "Поле очищено."
+    sammyStatus.TextColor3 = MUTED
+end)
+
+updateSammyCount()
+updateSammyCaptureButton()
+
+--// MINIMIZE / RESTORE
+
+connect(minimizeButton.Activated, function()
+
+    frame.Visible = false
+
+    miniButton.Visible = true
+
+end)
+
+local miniDraggedJustNow = false
+
+local miniDragging = false
+
+local miniDragStart
+
+local miniStartPosition
+
+
+
+connect(miniButton.InputBegan, function(input)
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        miniDragging = true
+
+        miniDraggedJustNow = false
+
+        miniDragStart = input.Position
+
+        miniStartPosition = miniButton.Position
+
+    end
+
+end)
+
+
+
+connect(UserInputService.InputChanged, function(input)
+
+    if not miniDragging then
+
+        return
+
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        local delta = input.Position - miniDragStart
+
+        if delta.Magnitude > 6 then
+
+            miniDraggedJustNow = true
+
+            local camera = workspace.CurrentCamera
+
+            local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+
+            local maxX = math.max(0, viewport.X - miniButton.AbsoluteSize.X)
+
+            local maxY = math.max(0, viewport.Y - miniButton.AbsoluteSize.Y)
+
+            miniButton.Position = UDim2.fromOffset(
+
+                math.clamp(miniStartPosition.X.Offset + delta.X, 0, maxX),
+
+                math.clamp(miniStartPosition.Y.Offset + delta.Y, 0, maxY)
+
+            )
+
+        end
+
+    end
+
+end)
+
+
+
+connect(UserInputService.InputEnded, function(input)
+
+    if miniDragging and (
+
+        input.UserInputType == Enum.UserInputType.MouseButton1
+
+        or input.UserInputType == Enum.UserInputType.Touch
+
+    ) then
+
+        miniDragging = false
+
+        if miniDraggedJustNow then
+
+            task.delay(0.2, function()
+
+                miniDraggedJustNow = false
+
+            end)
+
+        end
+
+    end
+
+end)
+
+
+
+connect(miniButton.Activated, function()
+
+    if miniDraggedJustNow then
+
+        miniDraggedJustNow = false
+
+        return
+
+    end
+
+    frame.Visible = true
+
+    miniButton.Visible = false
+
+end)
+
+--// DRAG WINDOW
+
+local dragging = false
+
+local dragStart
+
+local startPosition
+
+connect(topBar.InputBegan, function(input)
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+
+    or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = true
+
+        dragStart = input.Position
+
+        startPosition = frame.Position
+
+    end
+
+end)
+
+connect(UserInputService.InputChanged, function(input)
+
+    if not dragging then
+
+        return
+
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+
+    or input.UserInputType == Enum.UserInputType.Touch then
+
+        local delta = input.Position - dragStart
+
+        frame.Position = UDim2.new(
+
+            startPosition.X.Scale,
+
+            startPosition.X.Offset + delta.X,
+
+            startPosition.Y.Scale,
+
+            startPosition.Y.Offset + delta.Y
+
+        )
+
+    end
+
+end)
+
+connect(UserInputService.InputEnded, function(input)
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+
+    or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = false
+
+    end
+
+end)
+
+--====================================================================
+
+-- MODULE 1: VOID AUTO REDEEM V3.1
+
+-- Original collection / marker / fallback / delivery logic preserved.
+
+--====================================================================
+
+local collecting = false
+
+local fallbackArmed = false
+
+local fragments = {}
+
+local collectionToken = 0
+
+local deliveryToken = 0
+
+local watchedLabels = setmetatable({}, { __mode = "k" })
+
+local lastLabelText = setmetatable({}, { __mode = "k" })
+
+local redeemStatus = makeLabel(
+
+    redeemPage,
+
+    "Готово. Ожидаю объявление...",
+
+    UDim2.fromOffset(8, 7),
+
+    UDim2.new(1, -16, 0, 47),
+
+    MUTED,
+
+    11
+
+)
+
+local rkdButton = makeButton(
+    redeemPage,
+    "РКД",
+    UserInputService.TouchEnabled and UDim2.fromOffset(8, 143) or UDim2.fromOffset(8, 62),
+    UserInputService.TouchEnabled and UDim2.fromOffset(148, 48) or UDim2.fromOffset(64, 42),
+    PANEL_LIGHT,
+    WHITE,
+    UserInputService.TouchEnabled and 15 or 12
+)
+
+local finishButton = makeButton(
+    redeemPage,
+    "NO CODE",
+    UserInputService.TouchEnabled and UDim2.fromOffset(8, 55) or UDim2.fromOffset(78, 60),
+    UserInputService.TouchEnabled and UDim2.new(1, -16, 0, 78) or UDim2.fromOffset(138, 46),
+    PANEL_LIGHT,
+    WHITE,
+    UserInputService.TouchEnabled and 21 or 13
+)
+
+local restartButton = makeButton(
+    redeemPage,
+    "RESTART",
+    UserInputService.TouchEnabled and UDim2.fromOffset(164, 143) or UDim2.fromOffset(222, 62),
+    UserInputService.TouchEnabled and UDim2.fromOffset(148, 48) or UDim2.fromOffset(50, 42),
+    PANEL_LIGHT,
+    WHITE,
+    UserInputService.TouchEnabled and 14 or 9
+)
+
 makeLabel(
     redeemPage,
     "SEND DELAY (S)",
-    UDim2.fromOffset(8, 109),
-    UDim2.fromOffset(116, 30),
+    UserInputService.TouchEnabled and UDim2.fromOffset(8, 202) or UDim2.fromOffset(8, 114),
+    UserInputService.TouchEnabled and UDim2.fromOffset(100, 34) or UDim2.fromOffset(116, 30),
     MUTED,
     10
 )
@@ -803,8 +1678,8 @@ savedCodeDelay = math.floor(math.clamp(savedCodeDelay, 0, 10) * 10 + 0.5) / 10
 
 local codeDelayBox = create("TextBox", {
     Name = "CodeSubmitDelay",
-    Position = UDim2.fromOffset(132, 109),
-    Size = UDim2.fromOffset(88, 30),
+    Position = UserInputService.TouchEnabled and UDim2.fromOffset(116, 202) or UDim2.fromOffset(132, 114),
+    Size = UserInputService.TouchEnabled and UDim2.fromOffset(196, 34) or UDim2.fromOffset(88, 30),
     BackgroundColor3 = PANEL_LIGHT,
     BorderSizePixel = 0,
     Text = string.format("%.1f", savedCodeDelay),
@@ -812,7 +1687,7 @@ local codeDelayBox = create("TextBox", {
     TextColor3 = WHITE,
     PlaceholderColor3 = MUTED,
     Font = Enum.Font.GothamBold,
-    TextSize = 12,
+    TextSize = UserInputService.TouchEnabled and 16 or 12,
     ClearTextOnFocus = false,
     TextXAlignment = Enum.TextXAlignment.Center
 }, redeemPage)
@@ -821,460 +1696,913 @@ addCorner(codeDelayBox, 7)
 makeLabel(
     redeemPage,
     "Шаг 0.1 сек. Максимум 10.0 сек.",
-    UDim2.fromOffset(8, 145),
-    UDim2.new(1, -16, 0, 22),
+    UserInputService.TouchEnabled and UDim2.fromOffset(8, 234) or UDim2.fromOffset(8, 149),
+    UDim2.new(1, -16, 0, UserInputService.TouchEnabled and 24 or 22),
     MUTED,
     10
 )
 
 local function getCodeSubmitDelay()
+
     local value = tonumber(codeDelayBox.Text)
+
     if not value then
+
         value = 0
+
     end
+
+
 
     value = math.floor(math.clamp(value, 0, 10) * 10 + 0.5) / 10
+
     codeDelayBox.Text = string.format("%.1f", value)
+
     ENV.__SAB_CODE_DELAY = value
+
     return value
+
 end
+
+
 
 connect(codeDelayBox.FocusLost, function()
+
     getCodeSubmitDelay()
+
 end)
+
 local function setRedeemStatus(message)
+
     if alive() and redeemStatus.Parent then
+
         redeemStatus.Text = message
+
     end
+
 end
+
 local function clearFragments()
+
     table.clear(fragments)
+
 end
+
 local function updateFinishButton()
+
     if collecting then
+
         finishButton.Text = "FINISH CODE"
+
         finishButton.BackgroundColor3 = YELLOW
+
         finishButton.TextColor3 = BLACK
+
     else
+
         finishButton.Text = "NO CODE"
+
         finishButton.BackgroundColor3 = PANEL_LIGHT
+
         finishButton.TextColor3 = WHITE
+
     end
+
 end
+
 local function updateRKDButton()
+
     if fallbackArmed then
+
         rkdButton.BackgroundColor3 = YELLOW
+
         rkdButton.TextColor3 = BLACK
+
     else
+
         rkdButton.BackgroundColor3 = PANEL_LIGHT
+
         rkdButton.TextColor3 = WHITE
+
     end
+
 end
+
 local function findRedeemBox()
+
     local codesGui = playerGui:FindFirstChild("Codes")
+
     if not codesGui then
+
         return nil
+
     end
+
     local innerCodes = codesGui:FindFirstChild("Codes")
+
     local searchRoot = innerCodes or codesGui
+
     local redeemFrame = searchRoot:FindFirstChild("CodeRedeem", true)
+
     if not redeemFrame then
+
         return nil
+
     end
+
     local textBox = redeemFrame:FindFirstChild("TextBox", true)
+
     if textBox and textBox:IsA("TextBox") then
+
         return textBox
+
     end
+
     return nil
+
 end
+
 local function deliverCode(code)
+
     deliveryToken += 1
+
     local myDelivery = deliveryToken
+
     local textBox = findRedeemBox()
+
     if not textBox then
+
         setRedeemStatus("Redeem TextBox не найден.")
+
         warn("[SAB HUB] Redeem TextBox not found")
+
         return
+
     end
+
     local success, err = pcall(function()
+
         textBox:CaptureFocus()
+
         textBox.Text = code
+
     end)
+
     if not success then
+
         setRedeemStatus("Ошибка вставки: " .. tostring(err))
+
         return
+
     end
+
     local submitDelay = getCodeSubmitDelay()
+
     setRedeemStatus("AUTO: отправка через " .. string.format("%.1f", submitDelay) .. " сек.")
 
+
+
     task.delay(submitDelay, function()
+
         if not alive() or myDelivery ~= deliveryToken then
+
             return
+
         end
+
+
 
         if not textBox.Parent then
+
             setRedeemStatus("TextBox исчез перед отправкой.")
+
             return
+
         end
+
+
 
         local released = pcall(function()
+
             textBox:ReleaseFocus(true)
+
         end)
 
+
+
         if released then
+
             print("[SAB HUB] AUTO SENT:", code)
+
             setRedeemStatus("AUTO: код отправлен.")
+
         else
+
             setRedeemStatus("Не удалось нажать Enter.")
+
         end
+
     end)
+
 end
+
 local function cleanFragment(raw)
+
     raw = tostring(raw or "")
+
     raw = raw:gsub("<.->", "")
+
     raw = raw:lower()
+
     return raw:gsub("[^%w_%-]", "")
+
 end
+
 local function startCollection()
+
     collectionToken += 1
+
     clearFragments()
+
     collecting = true
+
     setRedeemStatus("Сбор начат. Жду части кода...")
+
     updateFinishButton()
+
     print("[SAB HUB] Code collection started")
+
 end
+
 local finishCollection
+
 finishCollection = function(reason)
+
     if not collecting or #fragments == 0 then
+
         return
+
     end
+
     local code = table.concat(fragments)
+
     collecting = false
+
     clearFragments()
+
     collectionToken += 1
+
     updateFinishButton()
+
     if code == "" then
+
         setRedeemStatus("Пустой код.")
+
         return
+
     end
+
     print("[SAB HUB] COMPLETE CODE:", code)
+
     print("[SAB HUB] Finish reason:", reason)
+
     deliverCode(code)
+
 end
+
 local function addFragment(raw)
+
     if not collecting then
+
         return
+
     end
+
     local fragment = cleanFragment(raw)
+
     if fragment == "" then
+
         return
+
     end
+
     table.insert(fragments, fragment)
+
     print("[SAB HUB] Fragment " .. tostring(#fragments) .. ": " .. fragment)
+
     setRedeemStatus(
+
         "Собрано частей: " .. tostring(#fragments)
+
         .. "\nЖду продолжение или FINISH CODE."
+
     )
+
     updateFinishButton()
+
     if fragment:match("%d+$") then
+
         finishCollection("instant numeric ending")
+
     end
+
 end
+
 local function findStartMarker(raw)
+
     local lower = tostring(raw or ""):lower()
+
     local useStart, useEnd = lower:find("use%s+code")
+
     local isStart, isEnd = lower:find("code%s+is")
+
     if useStart and isStart then
+
         if useStart <= isStart then
+
             return useEnd
+
         else
+
             return isEnd
+
         end
+
     end
+
     if useStart then
+
         return useEnd
+
     end
+
     if isStart then
+
         return isEnd
+
     end
+
     return nil
+
 end
+
 local function processNotification(rawText)
+
     if not alive() then
+
         return
+
     end
+
     local raw = tostring(rawText or "")
+
     raw = raw:gsub("<.->", "")
+
     local markerEnd = findStartMarker(raw)
+
     if markerEnd then
+
         print("[SAB HUB] Start marker detected:", raw)
+
         fallbackArmed = false
+
         updateRKDButton()
+
         startCollection()
+
         local tail = raw:sub(markerEnd + 1)
+
         if tail ~= "" then
+
             addFragment(tail)
+
         end
+
         return
+
     end
+
     if collecting then
+
         addFragment(raw)
+
         return
+
     end
+
     if fallbackArmed then
+
         fallbackArmed = false
+
         updateRKDButton()
+
         print("[SAB HUB] Fallback activated:", raw)
+
         startCollection()
+
         addFragment(raw)
+
     end
+
 end
+
 local inspectSecretAnnouncement -- assigned in the Secret Spawn Detector section below
 
+
+
 local function watchLabel(label)
+
     if not label
+
     or not label:IsA("TextLabel")
+
     or label.Name ~= "Template"
+
     or watchedLabels[label] then
+
         return
+
     end
+
     watchedLabels[label] = true
+
     local function inspect()
+
         if not alive() or not label.Parent then
+
             return
+
         end
+
         local currentText = label.Text
+
         if not currentText or currentText == "" then
+
             return
+
         end
+
         if lastLabelText[label] == currentText then
+
             return
+
         end
+
         lastLabelText[label] = currentText
+
+        -- Reuse the exact TopNotification source already used by Code and Secret detection.
+        -- Sammy Scanner stores the whole current label text as one message.
+        queueSammyNotification(currentText, label)
+
         processNotification(currentText)
+
         if inspectSecretAnnouncement then
+
             inspectSecretAnnouncement(currentText)
+
         end
+
     end
+
     connect(label:GetPropertyChangedSignal("Text"), inspect)
+
     task.delay(0.03, inspect)
+
 end
+
 local function setupNotificationWatcher()
+
     local root = playerGui:WaitForChild("TopNotification", 25)
+
     if not alive() then
+
         return
+
     end
+
     if not root then
+
         setRedeemStatus("TopNotification не найден.")
+
         warn("[SAB HUB] TopNotification not found")
+
         return
+
     end
+
     connect(root.DescendantAdded, function(object)
+
         watchLabel(object)
+
     end)
+
     for _, object in ipairs(root:GetDescendants()) do
+
         watchLabel(object)
+
     end
+
     setRedeemStatus("Готово. Ожидаю объявление...")
+
     print("[SAB HUB] Notification watcher ready")
+
 end
+
 connect(rkdButton.Activated, function()
+
     if not alive() then
+
         return
+
     end
+
     if collecting then
+
         setRedeemStatus("Код уже собирается. Используй FINISH CODE или RESTART.")
+
         return
+
     end
+
     fallbackArmed = not fallbackArmed
+
     updateRKDButton()
+
     if fallbackArmed then
+
         setRedeemStatus("РКД включён. Жду следующее уведомление...")
+
         print("[SAB HUB] RKD armed")
+
     else
+
         setRedeemStatus("РКД выключен. Ожидаю code is / use code...")
+
         print("[SAB HUB] RKD disarmed")
+
     end
+
 end)
+
 connect(finishButton.Activated, function()
+
     if not alive() then
+
         return
+
     end
+
     if not collecting then
+
         setRedeemStatus("Сейчас нет собираемого кода.")
+
         return
+
     end
+
     finishCollection("FINISH CODE button")
+
 end)
+
 connect(restartButton.Activated, function()
+
     if not alive() then
+
         return
+
     end
+
     collectionToken += 1
+
     deliveryToken += 1
+
     collecting = false
+
     clearFragments()
+
     fallbackArmed = false
+
     updateFinishButton()
+
     updateRKDButton()
+
     setRedeemStatus("Сброшено. RKD выключен. Ожидаю code is / use code...")
+
     print("[SAB HUB] Restart pressed; collection and RKD reset")
+
 end)
+
 --====================================================================
+
 -- MODULE 2: LEGACY SMART AUTO BUY
+
 -- No manual binding: every visible matching Brainrot Purchase prompt is eligible.
+
 -- Each prompt gets its own worker, matching the older GitHub implementation.
+
 --====================================================================
+
+
 
 local autoBuyPageStatus = makeLabel(
+
     autoPage,
+
     "Ожидаю промпт движущегося Brainrot...",
+
     UDim2.fromOffset(8, 5),
+
     UDim2.new(1, -16, 0, 27),
+
     MUTED,
+
     10
+
 )
+
+
 
 -- Start OFF after switching away from the bound-target system.
+
 local AUTO_DEFAULT_VERSION = 6
+
 local autoBuyActive
+
 if ENV.__SAB_AUTO_DEFAULT_VERSION ~= AUTO_DEFAULT_VERSION then
+
     autoBuyActive = false
+
     ENV.__SAB_AUTO_ENABLED = false
+
     ENV.__SAB_AUTO_DEFAULT_VERSION = AUTO_DEFAULT_VERSION
+
 else
+
     autoBuyActive = ENV.__SAB_AUTO_ENABLED == true
+
 end
+
+
 
 local anchored = false
+
 local visiblePrompts = setmetatable({}, { __mode = "k" })
+
 local promptWorkers = setmetatable({}, { __mode = "k" })
 
+
+
 local autoBuyButton = makeButton(
+
     autoPage,
+
     "AUTO BUY: OFF",
+
     UDim2.fromOffset(8, 36),
+
     UDim2.fromOffset(132, 36),
+
     PANEL_LIGHT,
+
     WHITE,
+
     11
+
 )
+
+
 
 makeLabel(
+
     autoPage,
+
     "INTERVAL (MS)",
+
     UDim2.fromOffset(150, 30),
+
     UDim2.fromOffset(122, 16),
+
     MUTED,
+
     10
+
 )
+
+
 
 local savedAutoInterval = tonumber(ENV.__SAB_AUTO_INTERVAL) or 100
+
 savedAutoInterval = math.floor(math.clamp(savedAutoInterval, 100, 5000))
+
 ENV.__SAB_AUTO_INTERVAL = savedAutoInterval
 
+
+
 local msBox = create("TextBox", {
+
     Name = "AutoBuyMS",
+
     Position = UDim2.fromOffset(150, 47),
+
     Size = UDim2.fromOffset(122, 29),
+
     BackgroundColor3 = PANEL_LIGHT,
+
     BorderSizePixel = 0,
+
     Text = tostring(savedAutoInterval),
+
     PlaceholderText = "Milliseconds",
+
     TextColor3 = WHITE,
+
     PlaceholderColor3 = MUTED,
+
     Font = Enum.Font.Gotham,
+
     TextSize = 12,
+
     ClearTextOnFocus = false,
+
     TextXAlignment = Enum.TextXAlignment.Center
+
 }, autoPage)
+
 addCorner(msBox, 7)
 
+
+
 local anchoredButton = makeButton(
+
     autoPage,
+
     "ANCHORED: OFF",
+
     UDim2.fromOffset(8, 79),
+
     UDim2.fromOffset(132, 36),
+
     PANEL_LIGHT,
+
     WHITE,
+
     11
+
 )
+
+
 
 local autoInfo = makeLabel(
+
     autoPage,
+
     "Автоматически обрабатывает все видимые Purchase-промпты Brainrot с ценой. Привязка не требуется.",
+
     UDim2.fromOffset(8, 125),
+
     UDim2.new(1, -16, 0, 42),
+
     MUTED,
+
     9
+
 )
 
+
+
 if UserInputService.TouchEnabled then
+
     autoBuyButton.Size = UDim2.fromOffset(132, 38)
+
     anchoredButton.Size = UDim2.fromOffset(132, 38)
+
 end
+
+
 
 local function getAutoBuyDelay()
+
     local ms = tonumber(msBox.Text)
+
     if not ms then
+
         ms = 100
+
     end
+
     ms = math.floor(math.clamp(ms, 100, 5000))
+
     msBox.Text = tostring(ms)
+
     ENV.__SAB_AUTO_INTERVAL = ms
+
     return ms / 1000
+
 end
+
+
 
 connect(msBox.FocusLost, function()
+
     getAutoBuyDelay()
+
 end)
 
+
+
 local function getPromptModel(prompt)
+
     local current = prompt and prompt.Parent
+
     while current and current ~= workspace do
+
         if current:IsA("Model") then
+
             return current
+
         end
+
         current = current.Parent
+
     end
+
     return nil
+
 end
+
+
 
 local function isBrainrotPurchasePrompt(prompt)
+
     if not prompt
+
         or not prompt:IsA("ProximityPrompt")
+
         or not prompt.Parent then
+
         return false
+
     end
+
+
 
     if prompt.ActionText ~= "Purchase" then
+
         return false
+
     end
+
+
 
     local objectText = tostring(prompt.ObjectText or "")
+
     if not objectText:match("%$[%d,%.]+[KMBkmb]?$") then
+
         return false
+
     end
 
+
+
     local model = getPromptModel(prompt)
+
     return model ~= nil and model:IsDescendantOf(workspace)
+
 end
 
+
+
 --// SECRET SPAWN DETECTOR
+
 local promptArrivalTimes = setmetatable({}, { __mode = "k" })
+
 local claimedSecretPrompts = setmetatable({}, { __mode = "k" })
+
 local watchedChatText = setmetatable({}, { __mode = "k" })
+
 -- Keep independent cooldowns so a Brainrot and a Lucky Block announcement
+
 -- do not suppress each other if they happen close together.
+
 local lastSecretAnnouncementAt = {
+
     brainrot = 0,
+
     luckyBlock = 0
+
 }
 
+
+
 -- A Secret announcement should only match a prompt that appeared very close
+
 -- to that announcement. This prevents an unrelated older Brainrot from being reused.
+
 local SECRET_PROMPT_PRE_WINDOW = 0.5
+
 local SECRET_PROMPT_POST_WINDOW = 1.75
+
+
 
 local function getPromptDisplayName(prompt)
     local objectText = tostring(prompt and prompt.ObjectText or "")
@@ -1293,65 +2621,142 @@ local function getPromptDisplayName(prompt)
     return name ~= "" and name or nil
 end
 
-local function rememberNewPrompt(prompt, addedAt)
-    if not prompt:IsA("ProximityPrompt") then
-        return
-    end
-
-    -- Some games fill ActionText/ObjectText just after parenting the prompt.
-    local function tryRemember()
-        if alive() and prompt.Parent and not promptArrivalTimes[prompt]
-            and isBrainrotPurchasePrompt(prompt) then
-            promptArrivalTimes[prompt] = addedAt
+-- In the 1x1x1x1 ritual a preview may be visible before the actual conveyor item.
+-- Read the owning model's pivot so we can distinguish a stationary preview from
+-- the Brainrot that physically travels along the conveyor.
+local function getPromptWorldPosition(prompt)
+    local model = getPromptModel(prompt)
+    if model then
+        local ok, pivot = pcall(function()
+            return model:GetPivot()
+        end)
+        if ok and pivot then
+            return pivot.Position
         end
     end
 
-    for _, delaySeconds in ipairs({ 0.08, 0.35, 0.9, 1.5 }) do
-        task.delay(delaySeconds, tryRemember)
+    local parent = prompt and prompt.Parent
+    if parent and parent:IsA("BasePart") then
+        return parent.Position
     end
+    return nil
 end
+
+local SECRET_CONVEYOR_MOVE_THRESHOLD = 1.0
+
+local function rememberNewPrompt(prompt, addedAt)
+
+    if not prompt:IsA("ProximityPrompt") then
+
+        return
+
+    end
+
+
+
+    -- Some games fill ActionText/ObjectText just after parenting the prompt.
+
+    local function tryRemember()
+
+        if alive() and prompt.Parent and not promptArrivalTimes[prompt]
+
+            and isBrainrotPurchasePrompt(prompt) then
+
+            promptArrivalTimes[prompt] = addedAt
+
+        end
+
+    end
+
+
+
+    for _, delaySeconds in ipairs({ 0.08, 0.35, 0.9, 1.5 }) do
+
+        task.delay(delaySeconds, tryRemember)
+
+    end
+
+end
+
+
 
 -- Existing prompts are a baseline, not evidence of a newly spawned Secret.
+
 for _, object in ipairs(workspace:GetDescendants()) do
+
     if object:IsA("ProximityPrompt") then
+
         promptArrivalTimes[object] = -math.huge
+
     end
+
 end
+
 connect(workspace.DescendantAdded, function(object)
+
     if object:IsA("ProximityPrompt") then
+
         rememberNewPrompt(object, os.clock())
+
     end
+
 end)
 
+
+
 local function registerSecretAnnouncement()
+
     if not alive() then
+
         return
+
     end
+
+
 
     local now = os.clock()
+
     if now - lastSecretAnnouncementAt.brainrot < 2 then
+
         return
+
     end
+
     lastSecretAnnouncementAt.brainrot = now
 
+
+
     local entry = {
+
         time = os.date("%H:%M:%S"),
+
         name = "Определяю Brainrot...",
+
         identified = false
+
     }
+
     table.insert(secretEntries, 1, entry)
+
     while #secretEntries > 20 do
+
         table.remove(secretEntries)
+
     end
+
     renderSecretEntries()
+
     showSecretToast(entry)
 
+
+
     task.spawn(function()
-        local bestDistance = math.huge
-        local bestPrompt = nil
-        local bestFoundAt = nil
+        local candidates = {}
+        local candidateCount = 0
         local deadline = now + SECRET_PROMPT_POST_WINDOW + 0.25
 
+        -- Do not stop at the first prompt. Ritual previews and the real conveyor
+        -- Brainrot can appear close together, so observe the entire spawn window.
         while alive() and os.clock() < deadline do
             for prompt, addedAt in pairs(promptArrivalTimes) do
                 local closeToAnnouncement = addedAt >= now - SECRET_PROMPT_PRE_WINDOW
@@ -1361,408 +2766,822 @@ local function registerSecretAnnouncement()
                     and not claimedSecretPrompts[prompt]
                     and prompt.Parent
                     and isBrainrotPurchasePrompt(prompt) then
-                    local distance = math.abs(addedAt - now)
-                    if distance < bestDistance then
-                        local displayName = getPromptDisplayName(prompt)
-                        if displayName then
-                            bestDistance = distance
-                            bestPrompt = prompt
-                            bestFoundAt = os.clock()
-                            entry.name = displayName
-                            entry.identified = true
-                            renderSecretEntries()
-                            updateSecretToastEntry(entry)
+
+                    local displayName = getPromptDisplayName(prompt)
+                    if displayName then
+                        local position = getPromptWorldPosition(prompt)
+                        local candidate = candidates[prompt]
+
+                        if not candidate then
+                            candidateCount += 1
+                            candidates[prompt] = {
+                                addedAt = addedAt,
+                                name = displayName,
+                                firstPosition = position,
+                                lastPosition = position,
+                                travelDistance = 0
+                            }
+                        else
+                            candidate.name = displayName
+                            if position and candidate.firstPosition then
+                                candidate.lastPosition = position
+                                candidate.travelDistance = (position - candidate.firstPosition).Magnitude
+                            elseif position then
+                                candidate.firstPosition = position
+                                candidate.lastPosition = position
+                            end
                         end
                     end
                 end
             end
-
-            -- Allow a brief replication-settling window, but never search indefinitely.
-            if bestPrompt and bestFoundAt and os.clock() - bestFoundAt >= 0.6 then
-                break
-            end
             task.wait(0.1)
         end
 
-        if bestPrompt then
-            -- A prompt can identify only one announcement; never reuse it for a later chat line.
-            claimedSecretPrompts[bestPrompt] = true
+        local bestMovingPrompt = nil
+        local bestMovingDistance = -1
+        local bestMovingTimeDistance = math.huge
+        local fallbackPrompt = nil
+        local fallbackTimeDistance = math.huge
+
+        for prompt, candidate in pairs(candidates) do
+            if prompt.Parent and not claimedSecretPrompts[prompt] then
+                local timeDistance = math.abs(candidate.addedAt - now)
+                if candidate.travelDistance >= SECRET_CONVEYOR_MOVE_THRESHOLD then
+                    if candidate.travelDistance > bestMovingDistance
+                        or (candidate.travelDistance == bestMovingDistance and timeDistance < bestMovingTimeDistance) then
+                        bestMovingPrompt = prompt
+                        bestMovingDistance = candidate.travelDistance
+                        bestMovingTimeDistance = timeDistance
+                    end
+                elseif timeDistance < fallbackTimeDistance then
+                    fallbackPrompt = prompt
+                    fallbackTimeDistance = timeDistance
+                end
+            end
         end
 
-        if not entry.identified then
-            entry.name = "Название не найдено"
-        elseif bestPrompt and bestPrompt.Parent then
-            entry.name = getPromptDisplayName(bestPrompt) or entry.name
+        -- Prefer the model that travelled along the conveyor. Use timing-only
+        -- fallback only when exactly one fresh candidate exists; with multiple
+        -- candidates, a stationary preview must not be reported as the spawned item.
+        local bestPrompt = bestMovingPrompt
+        if not bestPrompt and candidateCount == 1 then
+            bestPrompt = fallbackPrompt
         end
+        if bestPrompt then
+            claimedSecretPrompts[bestPrompt] = true
+            local candidate = candidates[bestPrompt]
+            entry.name = candidate and candidate.name or getPromptDisplayName(bestPrompt) or "Название не найдено"
+            entry.identified = candidate ~= nil or entry.name ~= "Название не найдено"
+        else
+            entry.name = "Название не найдено"
+            entry.identified = false
+        end
+
         renderSecretEntries()
         updateSecretToastEntry(entry)
+
     end)
+
 end
+
+
 
 local function registerSecretLuckyBlockAnnouncement()
+
     if not alive() then
+
         return
+
     end
+
+
 
     local now = os.clock()
+
     if now - lastSecretAnnouncementAt.luckyBlock < 2 then
+
         return
+
     end
+
     lastSecretAnnouncementAt.luckyBlock = now
 
+
+
     -- The announcement itself identifies the event as a Secret Lucky Block.
+
     -- Unlike Brainrot spawns, no Brainrot Purchase Prompt/name lookup is needed.
+
     local entry = {
+
         time = os.date("%H:%M:%S"),
+
         name = "SECRET LUCKY BLOCK",
+
         identified = true,
+
         toastTitle = "✦  SECRET SPAWNED!",
+
         eventType = "luckyBlock"
+
     }
 
+
+
     table.insert(secretEntries, 1, entry)
+
     while #secretEntries > 20 do
+
         table.remove(secretEntries)
+
     end
+
+
 
     renderSecretEntries()
+
     showSecretToast(entry)
+
 end
+
+
 
 inspectSecretAnnouncement = function(rawText)
+
     local text = tostring(rawText or "")
+
     text = text:gsub("<.->", ""):lower()
 
+
+
     if text:find("a secret lucky block has spawned", 1, true) then
+
         registerSecretLuckyBlockAnnouncement()
+
         return
+
     end
+
+
 
     if text:find("a secret brainrot has spawned", 1, true) then
+
         registerSecretAnnouncement()
+
     end
+
 end
+
+
 
 -- New Roblox chat system.
+
 pcall(function()
+
     local TextChatService = game:GetService("TextChatService")
+
     connect(TextChatService.MessageReceived, function(message)
+
         -- Ignore player-authored chat lines. Secret announcements are system messages
+
         -- and have no TextSource in the new Roblox chat API.
+
         if message and message.TextSource == nil then
+
             inspectSecretAnnouncement(message.Text)
+
         end
+
     end)
+
 end)
+
+
 
 -- Legacy chat fallback: watch only text objects inside chat-named GUI branches.
+
 local function isInsideChatGui(object)
+
     local current = object
+
     while current and current ~= playerGui do
+
         if current.Name:lower():find("chat", 1, true) then
+
             return true
+
         end
+
         current = current.Parent
+
     end
+
     return false
+
 end
+
+
 
 local function watchChatText(object)
+
     if watchedChatText[object]
+
         or not (object:IsA("TextLabel") or object:IsA("TextButton"))
+
         or not isInsideChatGui(object) then
+
         return
+
     end
+
     watchedChatText[object] = true
 
+
+
     local lastText = nil
+
     local function inspect()
+
         if not alive() or not object.Parent then
+
             return
+
         end
+
         local currentText = object.Text
+
         if currentText ~= lastText then
+
             lastText = currentText
+
             inspectSecretAnnouncement(currentText)
+
         end
+
     end
+
+
 
     connect(object:GetPropertyChangedSignal("Text"), inspect)
+
     task.defer(inspect)
+
 end
+
+
 
 for _, object in ipairs(playerGui:GetDescendants()) do
+
     watchChatText(object)
+
 end
+
 connect(playerGui.DescendantAdded, watchChatText)
 
+
+
 local startPromptWorker
+
 local stopPromptWorkers
 
+
+
 stopPromptWorkers = function()
+
     -- Clearing the token makes any running worker exit on its next loop check.
+
     for prompt in pairs(promptWorkers) do
+
         promptWorkers[prompt] = nil
+
     end
+
 end
+
+
 
 startPromptWorker = function(prompt)
+
     if not alive()
+
         or not autoBuyActive
+
         or promptWorkers[prompt]
+
         or not visiblePrompts[prompt]
+
         or not isBrainrotPurchasePrompt(prompt) then
+
         return false
+
     end
+
+
 
     local token = {}
+
     promptWorkers[prompt] = token
 
+
+
     task.spawn(function()
+
         while alive()
+
             and autoBuyActive
+
             and promptWorkers[prompt] == token
+
             and visiblePrompts[prompt]
+
             and prompt.Parent
+
             and prompt.Enabled
+
             and isBrainrotPurchasePrompt(prompt) do
 
+
+
             local ok, err = pcall(function()
+
                 -- Legacy behavior: make this prompt instant and trigger it.
+
                 prompt.HoldDuration = 0
+
                 prompt:InputHoldBegin()
+
                 prompt:InputHoldEnd()
+
             end)
 
+
+
             if not ok then
+
                 if alive() and autoBuyPageStatus.Parent then
+
                     autoBuyPageStatus.Text = "Ошибка Purchase: " .. tostring(err)
+
                 end
+
                 break
+
             end
+
+
 
             if alive() and autoBuyPageStatus.Parent then
+
                 autoBuyPageStatus.Text = "Auto Buy: " .. tostring(prompt.ObjectText)
+
             end
+
+
 
             task.wait(getAutoBuyDelay())
+
         end
+
+
 
         if promptWorkers[prompt] == token then
+
             promptWorkers[prompt] = nil
+
         end
+
     end)
 
+
+
     return true
+
 end
+
+
 
 local function updateAutoBuyButton()
+
     autoBuyButton.Text = autoBuyActive and "AUTO BUY: ON" or "AUTO BUY: OFF"
+
     autoBuyButton.BackgroundColor3 = autoBuyActive and YELLOW or PANEL_LIGHT
+
     autoBuyButton.TextColor3 = autoBuyActive and BLACK or WHITE
+
     ENV.__SAB_AUTO_ENABLED = autoBuyActive
+
 end
 
+
+
 connect(ProximityPromptService.PromptShown, function(prompt)
+
     if not isBrainrotPurchasePrompt(prompt) then
+
         return
+
     end
+
+
 
     visiblePrompts[prompt] = true
+
     autoBuyPageStatus.Text = "Найден Brainrot: " .. tostring(prompt.ObjectText)
 
+
+
     if autoBuyActive then
+
         startPromptWorker(prompt)
+
     end
+
 end)
+
+
 
 connect(ProximityPromptService.PromptHidden, function(prompt)
+
     visiblePrompts[prompt] = nil
+
     promptWorkers[prompt] = nil
+
 end)
+
+
 
 connect(autoBuyButton.Activated, function()
+
     autoBuyActive = not autoBuyActive
+
     updateAutoBuyButton()
 
+
+
     if autoBuyActive then
+
         autoBuyPageStatus.Text = "Auto Buy включён. Ищу Brainrot..."
+
         for prompt in pairs(visiblePrompts) do
+
             if prompt.Parent and prompt.Enabled then
+
                 startPromptWorker(prompt)
+
             end
+
         end
+
     else
+
         stopPromptWorkers()
+
         autoBuyPageStatus.Text = "Auto Buy выключен."
+
     end
+
 end)
+
+
 
 connect(anchoredButton.Activated, function()
+
     anchored = not anchored
+
     anchoredButton.Text = anchored and "ANCHORED: ON" or "ANCHORED: OFF"
+
     anchoredButton.BackgroundColor3 = anchored and YELLOW or PANEL_LIGHT
+
     anchoredButton.TextColor3 = anchored and BLACK or WHITE
 
+
+
     local char = player.Character or player.CharacterAdded:Wait()
+
     if char then
+
         for _, part in ipairs(char:GetDescendants()) do
+
             if part:IsA("BasePart") then
+
                 part.Anchored = anchored
+
             end
+
         end
+
     end
+
 end)
+
+
 
 updateAutoBuyButton()
 
+
+
 --// SETTINGS POPUP
+
 -- Kept compact and attached to the main window so it also scales on phones.
+
 settingsPanel = create("Frame", {
+
     Name = "SettingsPanel",
-    Size = UDim2.fromOffset(184, 98),
-    Position = UDim2.fromOffset(108, 42),
+
+    Size = UserInputService.TouchEnabled and UDim2.fromOffset(228, 132) or UDim2.fromOffset(184, 98),
+
+    Position = UserInputService.TouchEnabled
+        and UDim2.new(1, -236, 0, 52)
+        or UDim2.new(1, -192, 0, 42),
+
     BackgroundColor3 = BLACK,
+
     BorderSizePixel = 0,
+
     Visible = false,
+
     Active = true
+
 }, frame)
+
 addCorner(settingsPanel, 10)
+
 create("UIStroke", {
+
     Color = YELLOW,
+
     Thickness = 1.2,
+
     Transparency = 0.12
+
 }, settingsPanel)
+
+
 
 local settingsHeader = create("Frame", {
-    Size = UDim2.new(1, 0, 0, 30),
+
+    Size = UDim2.new(1, 0, 0, UserInputService.TouchEnabled and 36 or 30),
+
     BackgroundColor3 = Color3.fromRGB(34, 32, 24),
+
     BorderSizePixel = 0
+
 }, settingsPanel)
+
 addCorner(settingsHeader, 9)
+
 create("Frame", {
+
     Size = UDim2.new(1, 0, 0, 7),
+
     Position = UDim2.new(0, 0, 1, -7),
+
     BackgroundColor3 = Color3.fromRGB(34, 32, 24),
+
     BorderSizePixel = 0
+
 }, settingsHeader)
+
 makeLabel(
+
     settingsHeader,
+
     "⚙  SETTINGS",
+
     UDim2.fromOffset(9, 0),
-    UDim2.new(1, -42, 1, 0),
+
+    UDim2.new(1, UserInputService.TouchEnabled and -50 or -42, 1, 0),
+
     YELLOW,
+
     11
+
 )
+
 local settingsCloseButton = makeButton(
+
     settingsHeader,
+
     "×",
-    UDim2.new(1, -26, 0, 4),
-    UDim2.fromOffset(21, 21),
+
+    UserInputService.TouchEnabled and UDim2.new(1, -32, 0, 6) or UDim2.new(1, -26, 0, 4),
+
+    UserInputService.TouchEnabled and UDim2.fromOffset(26, 26) or UDim2.fromOffset(21, 21),
+
     PANEL_LIGHT,
+
     WHITE,
+
     15
+
 )
+
+
 
 local notificationToggleButton = makeButton(
+
     settingsPanel,
+
     "NOTIFICATIONS: ON",
-    UDim2.fromOffset(9, 36),
-    UDim2.new(1, -18, 0, 29),
+
+    UserInputService.TouchEnabled and UDim2.fromOffset(12, 46) or UDim2.fromOffset(9, 36),
+
+    UDim2.new(1, UserInputService.TouchEnabled and -24 or -18, 0, UserInputService.TouchEnabled and 42 or 29),
+
     YELLOW,
+
     BLACK,
+
     10
+
 )
+
 local settingsHint = makeLabel(
+
     settingsPanel,
+
     "Secret spawn popups (history stays ON)",
-    UDim2.fromOffset(9, 68),
-    UDim2.new(1, -18, 0, 22),
+
+    UserInputService.TouchEnabled and UDim2.fromOffset(10, 92) or UDim2.fromOffset(9, 68),
+
+    UDim2.new(1, UserInputService.TouchEnabled and -20 or -18, 0, UserInputService.TouchEnabled and 28 or 22),
+
     MUTED,
+
     8
+
 )
+
 settingsHint.TextXAlignment = Enum.TextXAlignment.Center
 
+
+
 local function updateNotificationToggleButton()
+
     notificationToggleButton.Text = notificationsEnabled and "NOTIFICATIONS: ON" or "NOTIFICATIONS: OFF"
+
     notificationToggleButton.BackgroundColor3 = notificationsEnabled and YELLOW or PANEL_LIGHT
+
     notificationToggleButton.TextColor3 = notificationsEnabled and BLACK or WHITE
+
     ENV.__SAB_SECRET_NOTIFICATIONS = notificationsEnabled
+
 end
 
+
+
 local function dismissSecretToast()
+
     secretToastToken += 1
+
     activeSecretToastEntry = nil
+
     cancelSecretToastTweens()
+
     secretToast.Visible = false
+
     secretToast.Position = UDim2.new(1, -18, 1, 130)
+
     secretToast.BackgroundTransparency = 1
+
     secretToastStroke.Transparency = 1
+
     secretToastAccent.BackgroundTransparency = 1
+
     secretToastTitle.TextTransparency = 1
+
     secretToastMessage.TextTransparency = 1
+
 end
+
+
 
 updateNotificationToggleButton()
 
+
+
 connect(settingsButton.Activated, function()
+
     settingsPanel.Visible = not settingsPanel.Visible
+
     if settingsPanel.Visible then
+
         secretPanel.Visible = false
+
     end
+
 end)
+
 connect(settingsCloseButton.Activated, function()
+
     settingsPanel.Visible = false
+
 end)
+
 connect(notificationToggleButton.Activated, function()
+
     notificationsEnabled = not notificationsEnabled
+
     updateNotificationToggleButton()
+
     if not notificationsEnabled then
+
         dismissSecretToast()
+
     end
+
 end)
+
 --// CLEANUP
+
 local function cleanup()
+
     if not running then
+
         return
+
     end
+
     running = false
+
     autoBuyActive = false
+
+    sammyCaptureArmed = false
+
     secretToastToken += 1
+
     cancelSecretToastTweens()
+
     if type(stopPromptWorkers) == "function" then
+
         pcall(stopPromptWorkers)
+
     end
+
     if anchored then
+
         pcall(function()
+
             local character = player.Character
+
             if character then
+
                 for _, part in ipairs(character:GetDescendants()) do
+
                     if part:IsA("BasePart") then
+
                         part.Anchored = false
+
                     end
+
                 end
+
             end
+
         end)
+
     end
+
     for _, connection in ipairs(connections) do
+
         pcall(function()
+
             connection:Disconnect()
+
         end)
+
     end
+
     table.clear(connections)
+
     pcall(function()
+
         gui:Destroy()
+
     end)
+
 end
+
 ENV.__SAB_HUB_CLEANUP = cleanup
+
 --// STARTUP
+
 updateFinishButton()
+
 updateRKDButton()
+
 showPage("Redeem")
+
 task.spawn(setupNotificationWatcher)
+
 print("================================")
-print("🍌 SAB HUB v14 LOADED | Secret Notifications Toggle")
-print("Categories: Code / Auto Buy | Legacy automatic prompt detection")
-print("Secret Spawn List + fresh prompt matching + optional responsive toast")
+
+print("🍌 SAB HUB v16 LOADED | Ritual Conveyor Matching + Sammy Scanner")
+
+print("Categories: Code / Auto Buy / Sammy Scanner | Legacy automatic prompt detection")
+
+print("Sammy Scanner: one complete TopNotification message per capture")
+
+print("Secret Spawn List + conveyor-motion matching + compact mobile history panel")
+
 print("================================")
