@@ -1077,7 +1077,9 @@ local PAGE_HEIGHTS = {
 
     AutoBuy = UserInputService.TouchEnabled and 350 or 260,
 
-    SammyScanner = UserInputService.TouchEnabled and 390 or 305
+    SammyScanner = UserInputService.TouchEnabled and 390 or 305,
+
+    EntityFinder = UserInputService.TouchEnabled and 390 or 305
 
 }
 
@@ -1147,9 +1149,9 @@ local function createTab(name, label, index)
 
         label,
 
-        UDim2.new((index - 1) / 3, (index - 1) * 2, 0, 0),
+        UDim2.new((index - 1) / 4, (index - 1) * 2, 0, 0),
 
-        UDim2.new(1 / 3, -4, 1, 0),
+        UDim2.new(1 / 4, -4, 1, 0),
 
         PANEL_LIGHT,
 
@@ -1180,12 +1182,16 @@ local autoPage = createPage("AutoBuy")
 
 local sammyPage = createPage("SammyScanner")
 
+local entityFinderPage = createPage("EntityFinder")
+
 -- Three equal, clearly named tabs. The SAMMY button is always the third tab.
 createTab("Redeem", "CODE", 1)
 
 createTab("AutoBuy", "AUTO BUY", 2)
 
 createTab("SammyScanner", "SAMMY", 3)
+
+createTab("EntityFinder", "ENTITY", 4)
 
 --// SAMMY SCANNER UI
 -- Captures exactly one complete notification; it never joins separate messages.
@@ -1403,6 +1409,386 @@ end)
 
 updateSammyCount()
 updateSammyCaptureButton()
+
+--// ENTITY FINDER
+-- Event-driven finder for selected conveyor Brainrots.
+-- It matches model/instance names and Purchase prompt ObjectText, without
+-- relying on the floating world-name display.
+
+local ENTITY_DEFAULT_NAMES = {
+    "LaVaccaSaturnoSaturnita",
+    "LosTralaleritos",
+    "LasTralaleritas",
+    "JobJobJobSahur",
+    "Fishboard",
+    "GraipussMedussi",
+    "Berryno",
+    "SecretLuckyBlock",
+    "TototoSahur",
+    "BlingLuming",
+    "ChicleteiraBicicleteira",
+    "ChicleteirinaBicicleteirina",
+    "Gub",
+    "Strawberrita",
+    "SirMangus",
+    "LaGrandeCombinasion",
+    "Bananito",
+    "NuclearoDinossauro",
+    "DJPanda",
+    "MoneyMoneyPuggy",
+    "BalloonBaboon",
+    "GaramaandMadundung",
+    "NoodleNoodlePoodle",
+    "TangTangKeletang",
+    "KetupatKepat",
+    "TictacSahur",
+    "KetchuruandMusturu",
+    "LavadoritoSpinito",
+    "VentolieroPavonero",
+    "CanguratoGelato",
+    "CashorCard",
+    "PizzaandRanch",
+    "BurguroandFryuro",
+    "CapitanoMoby",
+    "Cerberus",
+    "HydraSerpent",
+    "DragonCannelloni"
+}
+
+local function normalizeEntityName(value)
+    return tostring(value or ""):lower():gsub("[^%w]", "")
+end
+
+local entityTargets = {}
+local entityMatches = {}
+local entityRenderQueued = false
+
+for _, name in ipairs(ENTITY_DEFAULT_NAMES) do
+    entityTargets[normalizeEntityName(name)] = name
+end
+
+local entityNameBox = create("TextBox", {
+    Name = "EntityName",
+    Position = UDim2.fromOffset(8, 5),
+    Size = UDim2.new(1, -126, 0, 29),
+    BackgroundColor3 = PANEL_LIGHT,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "Brainrot name...",
+    PlaceholderColor3 = MUTED,
+    TextColor3 = WHITE,
+    Font = Enum.Font.Gotham,
+    TextSize = 10,
+    ClearTextOnFocus = false
+}, entityFinderPage)
+addCorner(entityNameBox, 7)
+
+local entityAddButton = makeButton(
+    entityFinderPage,
+    "ADD",
+    UDim2.new(1, -112, 0, 5),
+    UDim2.fromOffset(48, 29),
+    YELLOW,
+    BLACK,
+    9
+)
+
+local entityRemoveButton = makeButton(
+    entityFinderPage,
+    "REMOVE",
+    UDim2.new(1, -59, 0, 5),
+    UDim2.fromOffset(51, 29),
+    PANEL_LIGHT,
+    WHITE,
+    8
+)
+
+local entityStatus = makeLabel(
+    entityFinderPage,
+    "TRACKING: " .. tostring(#ENTITY_DEFAULT_NAMES) .. " NAMES · FOUND: 0",
+    UDim2.fromOffset(8, 37),
+    UDim2.new(1, -16, 0, 18),
+    MUTED,
+    8
+)
+
+local entityScanButton = makeButton(
+    entityFinderPage,
+    "SCAN WORKSPACE",
+    UDim2.fromOffset(8, 59),
+    UDim2.fromOffset(112, 25),
+    PANEL_LIGHT,
+    WHITE,
+    8
+)
+
+local entityResultsScroll = create("ScrollingFrame", {
+    Name = "EntityResults",
+    Position = UDim2.fromOffset(8, 90),
+    Size = UDim2.new(1, -16, 1, -98),
+    BackgroundColor3 = BLACK,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = YELLOW,
+    CanvasSize = UDim2.fromOffset(0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y
+}, entityFinderPage)
+addCorner(entityResultsScroll, 7)
+
+create("UIPadding", {
+    PaddingTop = UDim.new(0, 4),
+    PaddingBottom = UDim.new(0, 4),
+    PaddingLeft = UDim.new(0, 4),
+    PaddingRight = UDim.new(0, 4)
+}, entityResultsScroll)
+
+local entityResultsLayout = create("UIListLayout", {
+    Padding = UDim.new(0, 3),
+    SortOrder = Enum.SortOrder.LayoutOrder
+}, entityResultsScroll)
+
+local function updateEntityStatus(foundCount)
+    local targetCount = 0
+    for _ in pairs(entityTargets) do
+        targetCount += 1
+    end
+
+    entityStatus.Text = "TRACKING: " .. tostring(targetCount)
+        .. " NAMES · FOUND: " .. tostring(foundCount or 0)
+end
+
+local function queueEntityRender()
+    if entityRenderQueued then
+        return
+    end
+
+    entityRenderQueued = true
+    task.defer(function()
+        entityRenderQueued = false
+        if not alive() or not entityResultsScroll.Parent then
+            return
+        end
+
+        for _, child in ipairs(entityResultsScroll:GetChildren()) do
+            if child:IsA("Frame") or child:IsA("TextLabel") then
+                child:Destroy()
+            end
+        end
+
+        local grouped = {}
+        for model, key in pairs(entityMatches) do
+            if not model or not model.Parent then
+                entityMatches[model] = nil
+            elseif entityTargets[key] then
+                grouped[key] = (grouped[key] or 0) + 1
+            else
+                entityMatches[model] = nil
+            end
+        end
+
+        local keys = {}
+        local foundCount = 0
+        for key, count in pairs(grouped) do
+            table.insert(keys, key)
+            foundCount += count
+        end
+        table.sort(keys, function(a, b)
+            return entityTargets[a]:lower() < entityTargets[b]:lower()
+        end)
+
+        if #keys == 0 then
+            local empty = makeLabel(
+                entityResultsScroll,
+                "No matching entities found.",
+                UDim2.fromOffset(0, 0),
+                UDim2.new(1, -8, 0, 34),
+                MUTED,
+                9
+            )
+            empty.TextXAlignment = Enum.TextXAlignment.Center
+            empty.LayoutOrder = 1
+        else
+            for index, key in ipairs(keys) do
+                local row = create("Frame", {
+                    Name = "EntityResult",
+                    Size = UDim2.new(1, -6, 0, 27),
+                    BackgroundColor3 = PANEL_LIGHT,
+                    BorderSizePixel = 0,
+                    LayoutOrder = index
+                }, entityResultsScroll)
+                addCorner(row, 6)
+
+                makeLabel(
+                    row,
+                    entityTargets[key],
+                    UDim2.fromOffset(7, 0),
+                    UDim2.new(1, -78, 1, 0),
+                    WHITE,
+                    9
+                )
+
+                local countLabel = makeLabel(
+                    row,
+                    "FOUND ×" .. tostring(grouped[key]),
+                    UDim2.new(1, -73, 0, 0),
+                    UDim2.fromOffset(68, 27),
+                    GREEN,
+                    8
+                )
+                countLabel.TextXAlignment = Enum.TextXAlignment.Right
+            end
+        end
+
+        updateEntityStatus(foundCount)
+        task.defer(function()
+            if entityResultsScroll.Parent then
+                entityResultsScroll.CanvasSize = UDim2.fromOffset(
+                    0,
+                    entityResultsLayout.AbsoluteContentSize.Y + 8
+                )
+            end
+        end)
+    end)
+end
+
+local function getEntityOwnerModel(object)
+    local current = object
+    while current and current ~= workspace do
+        if current:IsA("Model") then
+            return current
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
+local function getEntityNameFromObject(object)
+    local directName = normalizeEntityName(object.Name)
+    if entityTargets[directName] then
+        return directName
+    end
+
+    if object:IsA("ProximityPrompt") then
+        local promptName = tostring(object.ObjectText or "")
+        promptName = promptName:gsub("%s*%$[%d,%.]+[KMBkmb]?%s*$", "")
+        local promptKey = normalizeEntityName(promptName)
+        if entityTargets[promptKey] then
+            return promptKey
+        end
+    end
+
+    return nil
+end
+
+local function inspectEntityObject(object)
+    if not alive() or not object or not object.Parent then
+        return
+    end
+
+    local key = getEntityNameFromObject(object)
+    if not key then
+        return
+    end
+
+    local model = getEntityOwnerModel(object)
+    if model and entityMatches[model] ~= key then
+        entityMatches[model] = key
+        queueEntityRender()
+    end
+end
+
+local function scanEntityWorkspace()
+    if not alive() then
+        return
+    end
+
+    for _, object in ipairs(workspace:GetDescendants()) do
+        inspectEntityObject(object)
+    end
+
+    queueEntityRender()
+end
+
+local function addEntityTarget()
+    local name = tostring(entityNameBox.Text or "")
+    name = name:gsub("^%s+", ""):gsub("%s+$", "")
+    local key = normalizeEntityName(name)
+
+    if key == "" then
+        entityStatus.Text = "ENTER A BRAINROT NAME FIRST"
+        return
+    end
+
+    if entityTargets[key] then
+        entityStatus.Text = "ALREADY TRACKING: " .. entityTargets[key]
+        return
+    end
+
+    entityTargets[key] = name
+    entityNameBox.Text = ""
+    scanEntityWorkspace()
+end
+
+local function removeEntityTarget()
+    local name = tostring(entityNameBox.Text or "")
+    name = name:gsub("^%s+", ""):gsub("%s+$", "")
+    local key = normalizeEntityName(name)
+
+    if key == "" or not entityTargets[key] then
+        entityStatus.Text = "NAME NOT IN THE TRACKING LIST"
+        return
+    end
+
+    entityTargets[key] = nil
+    for model, matchedKey in pairs(entityMatches) do
+        if matchedKey == key then
+            entityMatches[model] = nil
+        end
+    end
+
+    entityNameBox.Text = ""
+    queueEntityRender()
+end
+
+connect(entityAddButton.Activated, addEntityTarget)
+connect(entityRemoveButton.Activated, removeEntityTarget)
+connect(entityScanButton.Activated, scanEntityWorkspace)
+
+connect(entityNameBox.FocusLost, function(enterPressed)
+    if enterPressed then
+        addEntityTarget()
+    end
+end)
+
+connect(workspace.DescendantAdded, function(object)
+    inspectEntityObject(object)
+
+    -- Some conveyor models receive their final name shortly after replication.
+    if object:IsA("Model") or object:IsA("ProximityPrompt") then
+        task.delay(0.25, function()
+            if alive() then
+                inspectEntityObject(object)
+            end
+        end)
+        task.delay(1, function()
+            if alive() then
+                inspectEntityObject(object)
+            end
+        end)
+    end
+end)
+
+connect(workspace.DescendantRemoving, function(object)
+    local model = object:IsA("Model") and object or getEntityOwnerModel(object)
+    if model and entityMatches[model] then
+        entityMatches[model] = nil
+        queueEntityRender()
+    end
+end)
+
+scanEntityWorkspace()
+updateEntityStatus(0)
+
 
 --// MINIMIZE / RESTORE
 
