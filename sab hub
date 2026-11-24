@@ -1,7 +1,7 @@
 --[[
     🍌 SAB HUB v16
     Banana-themed compact hub for Steal a Brainrot.
-    Categories: Code / Auto Buy / Sammy Scanner.
+    Categories: Code / Auto Buy / Sammy Scanner / Entity Finder.
     v16 changes:
       - Phone layout uses a much larger FINISH CODE touch target.
       - RKD and RESTART use larger, separated touch controls below it.
@@ -1141,7 +1141,7 @@ end
 
 local function createTab(name, label, index)
 
-    -- Use proportional sizing so all three tabs remain fully visible on
+    -- Use proportional sizing so all four tabs remain fully visible on
     -- desktop and touch layouts, including scaled/narrow viewports.
     local button = makeButton(
 
@@ -1184,7 +1184,7 @@ local sammyPage = createPage("SammyScanner")
 
 local entityFinderPage = createPage("EntityFinder")
 
--- Three equal, clearly named tabs. The SAMMY button is always the third tab.
+-- Four equal, clearly named tabs. SAMMY remains the third tab.
 createTab("Redeem", "CODE", 1)
 
 createTab("AutoBuy", "AUTO BUY", 2)
@@ -1196,7 +1196,11 @@ createTab("EntityFinder", "ENTITY", 4)
 --// SAMMY SCANNER UI
 -- Captures exactly one complete notification; it never joins separate messages.
 local sammyCaptureArmed = false
-local latestTopNotificationText = nil
+
+-- Keep Sammy Scanner memory in the executor environment so it survives
+-- GUI rebuilds / script re-execution in the same game session.
+local latestTopNotificationText = tostring(ENV.__SAB_SAMMY_LAST_NOTIFICATION or "")
+local savedSammyMessage = tostring(ENV.__SAB_SAMMY_SAVED_MESSAGE or "")
 
 local sammyStatus = makeLabel(
     sammyPage,
@@ -1213,7 +1217,7 @@ local sammyMessageBox = create("TextBox", {
     Size = UDim2.new(1, -16, 0, UserInputService.TouchEnabled and 150 or 95),
     BackgroundColor3 = PANEL_LIGHT,
     BorderSizePixel = 0,
-    Text = "",
+    Text = savedSammyMessage,
     PlaceholderText = "Sammy message will appear here...",
     PlaceholderColor3 = MUTED,
     TextColor3 = WHITE,
@@ -1302,6 +1306,7 @@ local function setSammyMessage(rawText, statusText)
 
     -- Direct assignment is intentional: a riddle is always one complete message.
     sammyMessageBox.Text = messageText
+    ENV.__SAB_SAMMY_SAVED_MESSAGE = messageText
     updateSammyCount()
     sammyStatus.Text = statusText or "Сообщение Sammy захвачено. Можно копировать."
     sammyStatus.TextColor3 = GREEN
@@ -1321,6 +1326,7 @@ local function queueSammyNotification(rawText, sourceLabel)
     end
 
     latestTopNotificationText = rawText
+    ENV.__SAB_SAMMY_LAST_NOTIFICATION = rawText
     local armedAtDetection = sammyCaptureArmed
     if not armedAtDetection and not isSammyRelatedMessage(rawText) then
         return
@@ -1402,6 +1408,7 @@ end)
 
 connect(sammyClearButton.Activated, function()
     sammyMessageBox.Text = ""
+    ENV.__SAB_SAMMY_SAVED_MESSAGE = ""
     updateSammyCount()
     sammyStatus.Text = "Поле очищено."
     sammyStatus.TextColor3 = MUTED
@@ -1411,9 +1418,8 @@ updateSammyCount()
 updateSammyCaptureButton()
 
 --// ENTITY FINDER
--- Event-driven finder for selected conveyor Brainrots.
--- It matches model/instance names and Purchase prompt ObjectText, without
--- relying on the floating world-name display.
+-- Tracks matching conveyor entities after confirming that their model moves.
+-- It does not depend on the floating name labels above Brainrots.
 
 local ENTITY_DEFAULT_NAMES = {
     "LaVaccaSaturnoSaturnita",
@@ -1460,17 +1466,39 @@ local function normalizeEntityName(value)
 end
 
 local entityTargets = {}
-local entityMatches = {}
+local entityMatches = setmetatable({}, { __mode = "k" })
 local entityCandidates = setmetatable({}, { __mode = "k" })
 local entityRenderQueued = false
+local entityScanRunning = false
+local entityRescanRequested = false
+
+-- Keep custom additions/removals across script reloads in the same session.
+if type(ENV.__SAB_ENTITY_TARGETS) == "table" then
+    for _, name in ipairs(ENV.__SAB_ENTITY_TARGETS) do
+        if type(name) == "string" and name ~= "" then
+            entityTargets[normalizeEntityName(name)] = name
+        end
+    end
+else
+    for _, name in ipairs(ENTITY_DEFAULT_NAMES) do
+        entityTargets[normalizeEntityName(name)] = name
+    end
+end
+
+local function saveEntityTargets()
+    local saved = {}
+    for _, name in pairs(entityTargets) do
+        table.insert(saved, name)
+    end
+    table.sort(saved)
+    ENV.__SAB_ENTITY_TARGETS = saved
+end
+
+saveEntityTargets()
 
 local ENTITY_MOVE_THRESHOLD = 1.0
-local ENTITY_SAMPLE_INTERVAL = 0.15
-local ENTITY_SAMPLE_COUNT = 8
-
-for _, name in ipairs(ENTITY_DEFAULT_NAMES) do
-    entityTargets[normalizeEntityName(name)] = name
-end
+local ENTITY_SAMPLE_INTERVAL = 0.2
+local ENTITY_SAMPLE_COUNT = 20
 
 local entityNameBox = create("TextBox", {
     Name = "EntityName",
@@ -1510,7 +1538,7 @@ local entityRemoveButton = makeButton(
 
 local entityStatus = makeLabel(
     entityFinderPage,
-    "CONVEYOR TRACKING: " .. tostring(#ENTITY_DEFAULT_NAMES) .. " NAMES · FOUND: 0",
+    "CONVEYOR NAMES: " .. tostring(#ENTITY_DEFAULT_NAMES) .. " · FOUND: 0",
     UDim2.fromOffset(8, 37),
     UDim2.new(1, -16, 0, 18),
     MUTED,
@@ -1552,14 +1580,18 @@ local entityResultsLayout = create("UIListLayout", {
     SortOrder = Enum.SortOrder.LayoutOrder
 }, entityResultsScroll)
 
-local function updateEntityStatus(foundCount)
+local function updateEntityStatus(foundCount, message)
     local targetCount = 0
     for _ in pairs(entityTargets) do
         targetCount += 1
     end
 
-    entityStatus.Text = "TRACKING: " .. tostring(targetCount)
-        .. " NAMES · FOUND: " .. tostring(foundCount or 0)
+    if message then
+        entityStatus.Text = message
+    else
+        entityStatus.Text = "TRACKING: " .. tostring(targetCount)
+            .. " NAMES · FOUND: " .. tostring(foundCount or 0)
+    end
 end
 
 local function queueEntityRender()
@@ -1582,12 +1614,10 @@ local function queueEntityRender()
 
         local grouped = {}
         for model, key in pairs(entityMatches) do
-            if not model or not model.Parent then
+            if not model or not model.Parent or not entityTargets[key] then
                 entityMatches[model] = nil
-            elseif entityTargets[key] then
-                grouped[key] = (grouped[key] or 0) + 1
             else
-                entityMatches[model] = nil
+                grouped[key] = (grouped[key] or 0) + 1
             end
         end
 
@@ -1597,6 +1627,7 @@ local function queueEntityRender()
             table.insert(keys, key)
             foundCount += count
         end
+
         table.sort(keys, function(a, b)
             return entityTargets[a]:lower() < entityTargets[b]:lower()
         end)
@@ -1604,7 +1635,7 @@ local function queueEntityRender()
         if #keys == 0 then
             local empty = makeLabel(
                 entityResultsScroll,
-                "No matching entities found.",
+                "No matching conveyor entities found.",
                 UDim2.fromOffset(0, 0),
                 UDim2.new(1, -8, 0, 34),
                 MUTED,
@@ -1645,6 +1676,7 @@ local function queueEntityRender()
         end
 
         updateEntityStatus(foundCount)
+
         task.defer(function()
             if entityResultsScroll.Parent then
                 entityResultsScroll.CanvasSize = UDim2.fromOffset(
@@ -1656,7 +1688,7 @@ local function queueEntityRender()
     end)
 end
 
-local function getEntityOwnerModel(object)
+local function getEntityRoot(object)
     local current = object
     while current and current ~= workspace do
         if current:IsA("Model") then
@@ -1664,99 +1696,111 @@ local function getEntityOwnerModel(object)
         end
         current = current.Parent
     end
+
+    if object and object:IsA("BasePart") then
+        return object
+    end
+
+    return nil
+end
+
+local function getEntityPosition(root)
+    if not root or not root.Parent then
+        return nil
+    end
+
+    if root:IsA("Model") then
+        local ok, pivot = pcall(function()
+            return root:GetPivot()
+        end)
+        if ok and pivot then
+            return pivot.Position
+        end
+    elseif root:IsA("BasePart") then
+        return root.Position
+    end
+
+    return nil
+end
+
+local function findEntityTarget(value)
+    local key = normalizeEntityName(value)
+    if key ~= "" and entityTargets[key] then
+        return key
+    end
     return nil
 end
 
 local function getEntityNameFromObject(object)
-    local directName = normalizeEntityName(object.Name)
-    if entityTargets[directName] then
-        return directName
+    local key = findEntityTarget(object.Name)
+    if key then
+        return key
+    end
+
+    for _, attributeName in ipairs({ "BrainrotName", "EntityName", "DisplayName" }) do
+        local attributeValue = object:GetAttribute(attributeName)
+        key = findEntityTarget(attributeValue)
+        if key then
+            return key
+        end
     end
 
     if object:IsA("ProximityPrompt") then
         local promptName = tostring(object.ObjectText or "")
         promptName = promptName:gsub("%s*%$[%d,%.]+[KMBkmb]?%s*$", "")
-        local promptKey = normalizeEntityName(promptName)
-        if entityTargets[promptKey] then
-            return promptKey
+        key = findEntityTarget(promptName)
+        if key then
+            return key
         end
     end
 
     return nil
 end
 
-local function getEntityModelPosition(model)
-    if not model or not model.Parent then
-        return nil
-    end
-
-    local ok, pivot = pcall(function()
-        return model:GetPivot()
-    end)
-
-    return ok and pivot and pivot.Position or nil
-end
-
-local function confirmMovingEntity(model, key)
-    if not model or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+local function confirmMovingEntity(root, key)
+    if not root or not root:IsDescendantOf(workspace) or entityMatches[root] == key then
         return
     end
 
-    if entityMatches[model] == key then
+    local existing = entityCandidates[root]
+    if existing and existing.key == key then
         return
     end
 
-    local candidate = entityCandidates[model]
-    if candidate and candidate.key == key then
-        return
-    end
-
-    local firstPosition = getEntityModelPosition(model)
+    local firstPosition = getEntityPosition(root)
     if not firstPosition then
         return
     end
 
-    candidate = {
+    local candidate = {
         key = key,
-        firstPosition = firstPosition,
-        token = {}
+        firstPosition = firstPosition
     }
-    entityCandidates[model] = candidate
+    entityCandidates[root] = candidate
 
-    local token = candidate.token
     task.spawn(function()
-        local lastPosition = firstPosition
-        local movedDistance = 0
-
         for _ = 1, ENTITY_SAMPLE_COUNT do
             task.wait(ENTITY_SAMPLE_INTERVAL)
 
             if not alive()
-                or not model.Parent
-                or entityCandidates[model] ~= candidate
-                or candidate.token ~= token then
+                or not root.Parent
+                or entityCandidates[root] ~= candidate then
                 return
             end
 
-            local position = getEntityModelPosition(model)
-            if position then
-                movedDistance = (position - firstPosition).Magnitude
-                lastPosition = position
+            local currentPosition = getEntityPosition(root)
+            if currentPosition
+                and (currentPosition - candidate.firstPosition).Magnitude >= ENTITY_MOVE_THRESHOLD then
 
-                if movedDistance >= ENTITY_MOVE_THRESHOLD then
-                    entityMatches[model] = key
-                    entityCandidates[model] = nil
-                    queueEntityRender()
-                    return
-                end
+                entityMatches[root] = key
+                entityCandidates[root] = nil
+                queueEntityRender()
+                return
             end
         end
 
-        -- Keep the candidate eligible for a later scan if it began moving
-        -- after the first observation window.
-        if entityCandidates[model] == candidate then
-            candidate.firstPosition = lastPosition
-            candidate.token = {}
+        if entityCandidates[root] == candidate then
+            entityCandidates[root] = nil
         end
     end)
 end
@@ -1771,9 +1815,9 @@ local function inspectEntityObject(object)
         return
     end
 
-    local model = getEntityOwnerModel(object)
-    if model then
-        confirmMovingEntity(model, key)
+    local root = getEntityRoot(object)
+    if root then
+        confirmMovingEntity(root, key)
     end
 end
 
@@ -1782,11 +1826,48 @@ local function scanEntityWorkspace()
         return
     end
 
-    for _, object in ipairs(workspace:GetDescendants()) do
-        inspectEntityObject(object)
+    if entityScanRunning then
+        entityRescanRequested = true
+        return
     end
 
-    queueEntityRender()
+    entityScanRunning = true
+    updateEntityStatus(0, "SCANNING WORKSPACE...")
+
+    task.spawn(function()
+        local ok, descendants = pcall(function()
+            return workspace:GetDescendants()
+        end)
+
+        if not ok or type(descendants) ~= "table" then
+            entityScanRunning = false
+            updateEntityStatus(0, "WORKSPACE SCAN FAILED")
+            return
+        end
+
+        for index, object in ipairs(descendants) do
+            if not alive() then
+                entityScanRunning = false
+                return
+            end
+
+            inspectEntityObject(object)
+
+            -- Yield periodically so a large SAB map does not freeze the client.
+            if index % 300 == 0 then
+                task.wait()
+            end
+        end
+
+        entityScanRunning = false
+        queueEntityRender()
+        updateEntityStatus(0, "SCAN COMPLETE · TRACKING LIVE")
+
+        if entityRescanRequested and alive() then
+            entityRescanRequested = false
+            task.defer(scanEntityWorkspace)
+        end
+    end)
 end
 
 local function addEntityTarget()
@@ -1795,18 +1876,20 @@ local function addEntityTarget()
     local key = normalizeEntityName(name)
 
     if key == "" then
-        entityStatus.Text = "ENTER A BRAINROT NAME FIRST"
+        updateEntityStatus(0, "ENTER A BRAINROT NAME FIRST")
         return
     end
 
     if entityTargets[key] then
-        entityStatus.Text = "ALREADY TRACKING: " .. entityTargets[key]
+        updateEntityStatus(0, "ALREADY TRACKING: " .. entityTargets[key])
         return
     end
 
     entityTargets[key] = name
+    saveEntityTargets()
     entityNameBox.Text = ""
     scanEntityWorkspace()
+    queueEntityRender()
 end
 
 local function removeEntityTarget()
@@ -1815,14 +1898,22 @@ local function removeEntityTarget()
     local key = normalizeEntityName(name)
 
     if key == "" or not entityTargets[key] then
-        entityStatus.Text = "NAME NOT IN THE TRACKING LIST"
+        updateEntityStatus(0, "NAME NOT IN THE TRACKING LIST")
         return
     end
 
     entityTargets[key] = nil
-    for model, matchedKey in pairs(entityMatches) do
+    saveEntityTargets()
+
+    for root, matchedKey in pairs(entityMatches) do
         if matchedKey == key then
-            entityMatches[model] = nil
+            entityMatches[root] = nil
+        end
+    end
+
+    for root, candidate in pairs(entityCandidates) do
+        if candidate.key == key then
+            entityCandidates[root] = nil
         end
     end
 
@@ -1843,13 +1934,14 @@ end)
 connect(workspace.DescendantAdded, function(object)
     inspectEntityObject(object)
 
-    -- Some conveyor models receive their final name shortly after replication.
+    -- Some conveyor models receive their final name/attributes just after replication.
     if object:IsA("Model") or object:IsA("ProximityPrompt") then
         task.delay(0.25, function()
             if alive() then
                 inspectEntityObject(object)
             end
         end)
+
         task.delay(1, function()
             if alive() then
                 inspectEntityObject(object)
@@ -1859,17 +1951,21 @@ connect(workspace.DescendantAdded, function(object)
 end)
 
 connect(workspace.DescendantRemoving, function(object)
-    local model = object:IsA("Model") and object or getEntityOwnerModel(object)
-    if model then
-        entityCandidates[model] = nil
-        if entityMatches[model] then
-            entityMatches[model] = nil
+    -- Only clear a tracked root when that root itself is leaving Workspace.
+    -- Removing a Purchase prompt should not hide an entity that is still present.
+    local isTrackedRoot = object:IsA("Model")
+        or (object:IsA("BasePart") and (entityMatches[object] or entityCandidates[object]))
+
+    if isTrackedRoot then
+        entityCandidates[object] = nil
+        if entityMatches[object] then
+            entityMatches[object] = nil
             queueEntityRender()
         end
     end
 end)
 
-scanEntityWorkspace()
+task.defer(scanEntityWorkspace)
 updateEntityStatus(0)
 
 
@@ -4047,9 +4143,11 @@ print("================================")
 
 print("🍌 SAB HUB v16 LOADED | Ritual Conveyor Matching + Sammy Scanner")
 
-print("Categories: Code / Auto Buy / Sammy Scanner | Legacy automatic prompt detection")
+print("Categories: Code / Auto Buy / Sammy Scanner / Entity Finder")
 
 print("Sammy Scanner: one complete TopNotification message per capture")
+
+print("Entity Finder: conveyor movement filter + editable Brainrot name list")
 
 print("Secret Spawn List + conveyor-motion matching + compact mobile history panel")
 
