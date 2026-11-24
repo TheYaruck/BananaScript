@@ -1461,7 +1461,12 @@ end
 
 local entityTargets = {}
 local entityMatches = {}
+local entityCandidates = setmetatable({}, { __mode = "k" })
 local entityRenderQueued = false
+
+local ENTITY_MOVE_THRESHOLD = 1.0
+local ENTITY_SAMPLE_INTERVAL = 0.15
+local ENTITY_SAMPLE_COUNT = 8
 
 for _, name in ipairs(ENTITY_DEFAULT_NAMES) do
     entityTargets[normalizeEntityName(name)] = name
@@ -1505,7 +1510,7 @@ local entityRemoveButton = makeButton(
 
 local entityStatus = makeLabel(
     entityFinderPage,
-    "TRACKING: " .. tostring(#ENTITY_DEFAULT_NAMES) .. " NAMES · FOUND: 0",
+    "CONVEYOR TRACKING: " .. tostring(#ENTITY_DEFAULT_NAMES) .. " NAMES · FOUND: 0",
     UDim2.fromOffset(8, 37),
     UDim2.new(1, -16, 0, 18),
     MUTED,
@@ -1680,6 +1685,82 @@ local function getEntityNameFromObject(object)
     return nil
 end
 
+local function getEntityModelPosition(model)
+    if not model or not model.Parent then
+        return nil
+    end
+
+    local ok, pivot = pcall(function()
+        return model:GetPivot()
+    end)
+
+    return ok and pivot and pivot.Position or nil
+end
+
+local function confirmMovingEntity(model, key)
+    if not model or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+        return
+    end
+
+    if entityMatches[model] == key then
+        return
+    end
+
+    local candidate = entityCandidates[model]
+    if candidate and candidate.key == key then
+        return
+    end
+
+    local firstPosition = getEntityModelPosition(model)
+    if not firstPosition then
+        return
+    end
+
+    candidate = {
+        key = key,
+        firstPosition = firstPosition,
+        token = {}
+    }
+    entityCandidates[model] = candidate
+
+    local token = candidate.token
+    task.spawn(function()
+        local lastPosition = firstPosition
+        local movedDistance = 0
+
+        for _ = 1, ENTITY_SAMPLE_COUNT do
+            task.wait(ENTITY_SAMPLE_INTERVAL)
+
+            if not alive()
+                or not model.Parent
+                or entityCandidates[model] ~= candidate
+                or candidate.token ~= token then
+                return
+            end
+
+            local position = getEntityModelPosition(model)
+            if position then
+                movedDistance = (position - firstPosition).Magnitude
+                lastPosition = position
+
+                if movedDistance >= ENTITY_MOVE_THRESHOLD then
+                    entityMatches[model] = key
+                    entityCandidates[model] = nil
+                    queueEntityRender()
+                    return
+                end
+            end
+        end
+
+        -- Keep the candidate eligible for a later scan if it began moving
+        -- after the first observation window.
+        if entityCandidates[model] == candidate then
+            candidate.firstPosition = lastPosition
+            candidate.token = {}
+        end
+    end)
+end
+
 local function inspectEntityObject(object)
     if not alive() or not object or not object.Parent then
         return
@@ -1691,9 +1772,8 @@ local function inspectEntityObject(object)
     end
 
     local model = getEntityOwnerModel(object)
-    if model and entityMatches[model] ~= key then
-        entityMatches[model] = key
-        queueEntityRender()
+    if model then
+        confirmMovingEntity(model, key)
     end
 end
 
@@ -1780,9 +1860,12 @@ end)
 
 connect(workspace.DescendantRemoving, function(object)
     local model = object:IsA("Model") and object or getEntityOwnerModel(object)
-    if model and entityMatches[model] then
-        entityMatches[model] = nil
-        queueEntityRender()
+    if model then
+        entityCandidates[model] = nil
+        if entityMatches[model] then
+            entityMatches[model] = nil
+            queueEntityRender()
+        end
     end
 end)
 
